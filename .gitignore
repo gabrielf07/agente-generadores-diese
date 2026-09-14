@@ -1,0 +1,23 @@
+# Entorno y variables secretas (¡MUY IMPORTANTE: no subir a GitHub!)
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# Streamlit
+.streamlit/
+
+# IDEs y SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
