@@ -14,7 +14,8 @@ load_dotenv()
 VECTOR_DB_DIR = "./chroma_db"
 BM25_DOCS_PATH = "./bm25_docs.pkl"
 EMBEDDING_MODEL = "models/gemini-embedding-001"
-LLM_MODEL = "gemini-3.6-flash"
+PRIMARY_LLM_MODEL = "gemini-flash-lite-latest"
+FALLBACK_LLM_MODEL = "gemini-3.5-flash-lite"
 
 def format_docs(docs):
     """Formatea los fragmentos recuperados asegurando un contexto limpio y legible."""
@@ -59,11 +60,18 @@ def get_expert_agent():
         # Fallback a búsqueda vectorial si no existe el archivo BM25
         retriever = vector_retriever
 
-    # 4. Instanciar el LLM
-    llm = ChatGoogleGenerativeAI(
-        model=LLM_MODEL,
-        temperature=0.1
+    # 4. Instanciar el LLM con reintentos y modelo de respaldo (fallback) ante saturación 503
+    primary_llm = ChatGoogleGenerativeAI(
+        model=PRIMARY_LLM_MODEL,
+        temperature=0.1,
+        max_retries=2
     )
+    fallback_llm = ChatGoogleGenerativeAI(
+        model=FALLBACK_LLM_MODEL,
+        temperature=0.1,
+        max_retries=2
+    )
+    llm = primary_llm.with_fallbacks([fallback_llm])
 
     # 5. Diseñar la plantilla de Prompt para el Experto
     system_prompt = (

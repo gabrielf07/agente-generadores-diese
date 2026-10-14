@@ -119,9 +119,15 @@ if prompt := st.chat_input("Escribe tu consulta aquí..."):
     # Mostrar un indicador de "escribiendo..." mientras el agente piensa
     with st.chat_message("assistant"):
         with st.spinner("Consultando manuales..."):
-            # Llamar al agente de LangChain
-            response = agente.invoke(prompt)
-            st.markdown(response)
-            
-    # Guardar la respuesta del agente en el historial
-    st.session_state.messages.append({"role": "assistant", "content": response})
+            try:
+                # Llamar al agente de LangChain
+                response = agente.invoke(prompt)
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            except Exception as e:
+                error_msg = (
+                    "⚠️ Los servidores del modelo experimentan alta demanda momentánea. "
+                    "Por favor, intenta enviar tu consulta nuevamente en unos segundos."
+                )
+                st.warning(error_msg)
+                st.session_state.messages.append({"role": "assistant", "content": error_msg})
