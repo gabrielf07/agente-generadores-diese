@@ -23,4 +23,4 @@ COPY . .
 EXPOSE 8501
 
 # Comando para ejecutar la aplicación web adaptándose al puerto dinámico de Render o al 8501 por defecto
-CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0 --server.headless=true"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8501}"]

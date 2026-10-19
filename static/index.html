@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DieselGen Intelligence | Central Multi-Sede y Asistente Técnico</title>
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Markdown parser: Marked.js -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Application Stylesheet -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- =========================================================================
+       TOP NAVIGATION BAR
+       ========================================================================= -->
+  <header class="navbar">
+    <div class="nav-brand" onclick="navigateTo('sedes')">
+      <div class="brand-icon-wrapper">⚡</div>
+      <div class="brand-titles">
+        <h1>DIESELGEN INTELLIGENCE</h1>
+        <span>Central Multi-Sede & Control Técnico</span>
+      </div>
+    </div>
+
+    <!-- Live System Stats Counter -->
+    <div class="nav-stats-bar">
+      <div class="stat-pill">
+        <span class="dot cyan"></span>
+        <span>Sedes: <strong id="stat-sedes-count">3</strong></span>
+      </div>
+      <div class="stat-pill">
+        <span class="dot green"></span>
+        <span>Plantas: <strong id="stat-plantas-count">4</strong></span>
+      </div>
+      <div class="stat-pill">
+        <span>Capacidad: <strong id="stat-kva-count">2,250 kVA</strong></span>
+      </div>
+      <div class="stat-pill">
+        <span>Memoria IA: <strong id="stat-casos-count">2 casos</strong></span>
+      </div>
+    </div>
+
+    <!-- Actions & Views -->
+    <div class="nav-actions">
+      <button class="btn btn-secondary btn-sm" onclick="navigateTo('sedes')">
+        🏢 Sedes
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="navigateTo('cases')">
+        📖 Bitácora
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="navigateTo('manuals')">
+        📚 Manuales
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-nueva-sede')">
+        ➕ Nueva Sede
+      </button>
+      <button class="btn btn-success btn-sm" onclick="openModal('modal-nueva-planta')">
+        ➕ Nueva Planta
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       MAIN APP CONTAINER
+       ========================================================================= -->
+  <main class="app-container">
+
+    <!-- =====================================================================
+         VISTA 1: SEDES HUB (DASHBOARD)
+         ===================================================================== -->
+    <section id="view-sedes" class="view-section active">
+      <div class="section-header">
+        <div class="section-title-group">
+          <h2>Sedes Centralizadas de Generación</h2>
+          <p>Supervisión de grupos electrógenos por ubicación física, estado operativo y planes de mantenimiento.</p>
+        </div>
+        <div class="section-actions">
+          <button class="btn btn-primary" onclick="openModal('modal-nueva-sede')">
+            ➕ Registrar Nueva Sede
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid of Sedes -->
+      <div class="sedes-grid" id="sedes-container">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         VISTA 2: PLANTAS DE LA SEDE SELECCIONADA
+         ===================================================================== -->
+    <section id="view-sede-plantas" class="view-section">
+      <div class="breadcrumbs">
+        <a onclick="navigateTo('sedes')">Sedes</a>
+        <span class="separator">/</span>
+        <span class="current" id="breadcrumb-sede-name">Cargando sede...</span>
+      </div>
+
+      <!-- Sede Banner -->
+      <div class="sede-banner" id="sede-banner-info">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="section-header">
+        <div class="section-title-group">
+          <h3>Grupos Electrógenos en esta Sede</h3>
+          <p>Selecciona una planta para consultar su Ficha Técnica, Motor, Generador, Controlador, Plan de Mantenimiento e Historial con fotos.</p>
+        </div>
+        <div>
+          <button class="btn btn-success" id="btn-add-planta-to-sede" onclick="openAddPlantaModalForCurrentSede()">
+            ➕ Agregar Planta a esta Sede
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid of Plants -->
+      <div class="plantas-grid" id="sede-plantas-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         VISTA 3: FICHA INTEGRAL DE PLANTA (DETALLE)
+         ===================================================================== -->
+    <section id="view-planta-detail" class="view-section">
+      <div class="breadcrumbs">
+        <a onclick="navigateTo('sedes')">Sedes</a>
+        <span class="separator">/</span>
+        <a id="breadcrumb-link-sede" onclick="returnToCurrentSede()">Sede</a>
+        <span class="separator">/</span>
+        <span class="current" id="breadcrumb-planta-name">Planta</span>
+      </div>
+
+      <!-- Header Summary Banner -->
+      <div class="planta-detail-header" id="planta-detail-header-card">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Tabs Navigation -->
+      <div class="tabs-nav">
+        <button class="tab-btn active" onclick="switchPlantaTab('tab-plan')">
+          📋 Plan de Mantenimiento
+        </button>
+        <button class="tab-btn" onclick="switchPlantaTab('tab-motor')">
+          🔧 Ficha del Motor
+        </button>
+        <button class="tab-btn" onclick="switchPlantaTab('tab-generador')">
+          ⚡ Ficha del Generador
+        </button>
+        <button class="tab-btn" onclick="switchPlantaTab('tab-controlador')">
+          🎛️ Ficha del Controlador
+        </button>
+        <button class="tab-btn" onclick="switchPlantaTab('tab-historial')">
+          📸 Historial & Fotos de Trabajos
+        </button>
+      </div>
+
+      <!-- TAB 1: PLAN DE MANTENIMIENTO -->
+      <div id="tab-plan" class="tab-panel active">
+        <div class="plan-banner">
+          <div class="plan-banner-text">
+            <h4>Plan de Mantenimiento Preventivo Según Manual de Fábrica</h4>
+            <p>Protocolos de intervención, reemplazo de fluidos y tren de filtración estandarizados.</p>
+          </div>
+          <div class="plan-banner-actions">
+            <button class="btn btn-primary btn-sm" onclick="openChatForCurrentPlanta('¿Qué le corresponde en el próximo mantenimiento y qué filtros debo preparar?')">
+              🤖 Consultar al Agente sobre este Plan
+            </button>
+          </div>
+        </div>
+        <div class="plan-text-content" id="planta-plan-text">
+          <!-- Text rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- TAB 2: FICHA DEL MOTOR -->
+      <div id="tab-motor" class="tab-panel">
+        <div class="specs-category-grid" id="motor-specs-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- TAB 3: FICHA DEL GENERADOR -->
+      <div id="tab-generador" class="tab-panel">
+        <div class="specs-category-grid" id="generador-specs-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- TAB 4: FICHA DEL CONTROLADOR -->
+      <div id="tab-controlador" class="tab-panel">
+        <div class="specs-category-grid" id="controlador-specs-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- TAB 5: HISTORIAL DE TRABAJOS Y FOTOS -->
+      <div id="tab-historial" class="tab-panel">
+        <div class="section-header" style="margin-bottom: 1.25rem;">
+          <div>
+            <h3>Bitácora de Intervenciones y Mantenimientos Realizados</h3>
+            <p>Registro histórico cronológico con horas de operación, detalles técnicos y registro fotográfico en campo.</p>
+          </div>
+          <div>
+            <button class="btn btn-success" onclick="openModal('modal-nuevo-trabajo')">
+              ➕ Registrar Nuevo Trabajo en esta Planta
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline of jobs -->
+        <div class="trabajos-timeline" id="trabajos-timeline-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         VISTA 4: BITÁCORA TÉCNICA GLOBAL DE LA EMPRESA
+         ===================================================================== -->
+    <section id="view-cases" class="view-section">
+      <div class="section-header">
+        <div class="section-title-group">
+          <h2>Bitácora de Casos y Fallas Reales en Campo</h2>
+          <p>Memoria técnica colectiva de los técnicos. El Asistente IA consulta estos precedentes antes de emitir cualquier descarte.</p>
+        </div>
+        <div>
+          <button class="btn btn-primary" onclick="openModal('modal-nuevo-caso')">
+            ➕ Registrar Nueva Experiencia / Falla
+          </button>
+        </div>
+      </div>
+
+      <!-- Search in Cases -->
+      <div style="margin-bottom: 1.5rem;">
+        <input type="text" id="input-search-cases" class="form-control" placeholder="🔍 Buscar por modelo, síntoma, solución o técnico..." oninput="filterCases()">
+      </div>
+
+      <!-- Cases List -->
+      <div class="trabajos-timeline" id="cases-list-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         VISTA 5: MANUALES Y GUÍAS TÉCNICAS
+         ===================================================================== -->
+    <section id="view-manuals" class="view-section">
+      <div class="section-header">
+        <div class="section-title-group">
+          <h2>Biblioteca de Manuales y Guías Oficiales</h2>
+          <p>Documentos técnicos en formato PDF indexados en la base vectorial del agente para consultas de ingeniería.</p>
+        </div>
+        <div>
+          <button class="btn btn-primary" onclick="openModal('modal-subir-manual')">
+            📤 Subir Nuevo Manual PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="sedes-grid" id="manuals-list-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =========================================================================
+       BURBUJA FLOTANTE DEL CHAT (EL AGENTE EN LA MANO)
+       ========================================================================= -->
+  <div class="floating-chat-container">
+    
+    <!-- Ventana del Widget de Chat -->
+    <div class="chat-widget-window" id="chat-widget">
+      <!-- Header -->
+      <div class="chat-header">
+        <div class="chat-header-info">
+          <div class="chat-avatar">🤖</div>
+          <div class="chat-title">
+            <h3>Asistente IA Especialista</h3>
+            <span><span class="dot green"></span> En línea • RAG Local Activo</span>
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button title="Limpiar conversación" onclick="clearChat()">🗑️</button>
+          <button title="Minimizar" onclick="toggleChatWidget()">✕</button>
+        </div>
+      </div>
+
+      <!-- Context Bar (Indica la planta activa enlazada al agente) -->
+      <div class="chat-context-bar">
+        <div class="context-label" id="chat-active-plant-label">
+          📍 Contexto: <strong id="chat-plant-name">Modo General</strong>
+        </div>
+        <select id="chat-plant-selector" class="context-select" onchange="onChatPlantChanged()">
+          <option value="">⚙️ Modo General (Todas)</option>
+          <!-- Plants populated dynamically -->
+        </select>
+      </div>
+
+      <!-- Quick Chips -->
+      <div class="chat-quick-chips">
+        <button class="chip-btn" onclick="sendQuickPrompt('¿Qué mantenimiento le corresponde a esta planta según sus horas y qué filtros requiere?')">📋 Próximo Servicio</button>
+        <button class="chip-btn" onclick="sendQuickPrompt('El motor presenta alarma de baja presión de aceite. ¿Cuál es el checklist de descarte?')">🚨 Baja Presión Aceite</button>
+        <button class="chip-btn" onclick="sendQuickPrompt('El grupo da marcha pero no enciende. ¿Qué debo revisar?')">🔍 Falla de Arranque</button>
+        <button class="chip-btn" onclick="sendQuickPrompt('¿Cuáles son los parámetros de calibración del AVR y voltaje?')">⚡ Regulación AVR</button>
+      </div>
+
+      <!-- Chat Messages Scroll Area -->
+      <div class="chat-messages" id="chat-messages-container">
+        <div class="chat-bubble bot">
+          👋 <strong>¡Hola! Soy tu Asistente de Campo Especializado en Grupos Electrógenos.</strong><br><br>
+          Estoy conectado a la <strong>ficha técnica de esta planta</strong> (motor, alternador, controlador y plan de fábrica) junto con la <strong>bitácora de experiencias de campo</strong>.<br><br>
+          ¿Qué síntoma, código de alarma o requerimiento de mantenimiento deseas consultar?
+        </div>
+      </div>
+
+      <!-- Chat Input Bar -->
+      <div class="chat-input-bar">
+        <input type="text" id="chat-user-input" class="chat-input" placeholder="Escribe tu consulta o falla..." onkeydown="handleChatKeyDown(event)">
+        <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">➔</button>
+      </div>
+    </div>
+
+    <!-- Botón Lanzador Flotante -->
+    <button class="chat-launcher-btn" id="chat-launcher" onclick="toggleChatWidget()" title="Abrir Asistente Técnico">
+      <div class="chat-launcher-pulse"></div>
+      <span>💬</span>
+      <span class="chat-launcher-badge">IA</span>
+    </button>
+  </div>
+
+  <!-- =========================================================================
+       MODALES
+       ========================================================================= -->
+
+  <!-- MODAL 1: REGISTRAR NUEVA SEDE -->
+  <div class="modal-backdrop" id="modal-nueva-sede">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>➕ Registrar Nueva Sede</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-nueva-sede')">×</button>
+      </div>
+      <form id="form-nueva-sede" onsubmit="handleCreateSede(event)">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Código de Sede (Único):</label>
+              <input type="text" name="codigo" class="form-control" placeholder="Ej: SENIAT-TC" required>
+            </div>
+            <div class="form-group">
+              <label>Ícono Representativo:</label>
+              <input type="text" name="icono" class="form-control" value="🏢" placeholder="🏢 / 🏛️ / 🏭">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Nombre Completo de la Sede:</label>
+            <input type="text" name="nombre" class="form-control" placeholder="Ej: SENIAT - Torre Capriles" required>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Ciudad:</label>
+              <input type="text" name="ciudad" class="form-control" value="Caracas" required>
+            </div>
+            <div class="form-group">
+              <label>Dirección:</label>
+              <input type="text" name="direccion" class="form-control" placeholder="Av. / Calle / Edificio">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Nombre del Contacto / Supervisor:</label>
+              <input type="text" name="contacto_nombre" class="form-control" placeholder="Ing. o Encargado">
+            </div>
+            <div class="form-group">
+              <label>Teléfono de Contacto:</label>
+              <input type="text" name="contacto_telefono" class="form-control" placeholder="+58 414-XXXXXXX">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notas de Acceso o Descripción:</label>
+            <textarea name="notas" class="form-control" placeholder="Ubicación de llaves, acceso a sala de máquinas, etc."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nueva-sede')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Sede</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: REGISTRAR NUEVA PLANTA -->
+  <div class="modal-backdrop" id="modal-nueva-planta">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3>➕ Registrar Nuevo Grupo Electrógeno</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-nueva-planta')">×</button>
+      </div>
+      <form id="form-nueva-planta" onsubmit="handleCreatePlanta(event)">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Sede a la que pertenece:</label>
+              <select name="sede_id" id="select-modal-planta-sede" class="form-control" required>
+                <!-- Filled dynamically -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Código Identificador de la Planta:</label>
+              <input type="text" name="codigo" class="form-control" placeholder="Ej: GEN-TC-01" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Nombre Descriptivo de la Planta:</label>
+            <input type="text" name="nombre" class="form-control" placeholder="Ej: Planta Principal Cummins 500 kVA - Torre Capriles" required>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Ensambladora:</label>
+              <input type="text" name="ensambladora" class="form-control" placeholder="Cummins / FG Wilson / Caterpillar / Modasa">
+            </div>
+            <div class="form-group">
+              <label>Ubicación Interna:</label>
+              <input type="text" name="ubicacion_interna" class="form-control" placeholder="Ej: Sótano 2 - Sala de Máquinas">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Capacidad Standby (kVA):</label>
+              <input type="number" step="0.1" name="capacidad_kva" class="form-control" placeholder="500" required>
+            </div>
+            <div class="form-group">
+              <label>Capacidad Activa (kW):</label>
+              <input type="number" step="0.1" name="capacidad_kw" class="form-control" placeholder="400" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Horómetro Actual (Horas):</label>
+              <input type="number" step="0.1" name="horas_operacion" class="form-control" value="0.0">
+            </div>
+            <div class="form-group">
+              <label>Estado Operativo:</label>
+              <select name="estado" class="form-control">
+                <option value="Operativa">Operativa</option>
+                <option value="En Mantenimiento">En Mantenimiento</option>
+                <option value="Fuera de Servicio">Fuera de Servicio</option>
+                <option value="Alerta">Alerta</option>
+              </select>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 1.5rem 0;">
+          <h4 style="color: var(--accent-cyan); margin-bottom: 0.75rem;">🔧 Especificaciones del Motor</h4>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Marca del Motor:</label>
+              <input type="text" name="motor_marca" class="form-control" placeholder="Cummins / Caterpillar / Perkins">
+            </div>
+            <div class="form-group">
+              <label>Modelo del Motor:</label>
+              <input type="text" name="motor_modelo" class="form-control" placeholder="QSL9-G5 / C15 ACERT / 1106A">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Potencia (HP):</label>
+              <input type="number" step="0.1" name="motor_potencia_hp" class="form-control" placeholder="450">
+            </div>
+            <div class="form-group">
+              <label>Capacidad de Aceite:</label>
+              <input type="text" name="motor_capacidad_aceite" class="form-control" placeholder="26.5 Litros (7.0 Galones)">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Filtro de Aceite (Código):</label>
+              <input type="text" name="motor_filtro_aceite" class="form-control" placeholder="Fleetguard LF9009 / 1R-1808">
+            </div>
+            <div class="form-group">
+              <label>Filtro Combustible Primario:</label>
+              <input type="text" name="motor_filtro_combustible_primario" class="form-control" placeholder="Fleetguard FS1000">
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 1.5rem 0;">
+          <h4 style="color: #93c5fd; margin-bottom: 0.75rem;">⚡ Especificaciones del Generador (Alternador)</h4>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Marca del Alternador:</label>
+              <input type="text" name="generador_marca" class="form-control" placeholder="Stamford / Leroy Somer / Marathon">
+            </div>
+            <div class="form-group">
+              <label>Modelo del Alternador:</label>
+              <input type="text" name="generador_modelo" class="form-control" placeholder="HCI534C / TAL 0473">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Voltaje y Fases:</label>
+              <input type="text" name="generador_voltaje" class="form-control" value="208/120V Trifásico" placeholder="208/120V / 480/277V">
+            </div>
+            <div class="form-group">
+              <label>Modelo de AVR (Regulador):</label>
+              <input type="text" name="generador_modelo_avr" class="form-control" placeholder="AS440 / SX460 / R450">
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 1.5rem 0;">
+          <h4 style="color: #fbcfe8; margin-bottom: 0.75rem;">🎛️ Especificaciones del Controlador</h4>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Marca del Controlador:</label>
+              <input type="text" name="controlador_marca" class="form-control" value="Deep Sea Electronics">
+            </div>
+            <div class="form-group">
+              <label>Modelo del Controlador:</label>
+              <input type="text" name="controlador_modelo" class="form-control" placeholder="DSE 7320 MKII / ComAp">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Disparo Baja Presión Aceite:</label>
+              <input type="text" name="controlador_umbral_baja_presion_aceite" class="form-control" value="18 PSI">
+            </div>
+            <div class="form-group">
+              <label>Disparo Alta Temperatura:</label>
+              <input type="text" name="controlador_umbral_alta_temperatura" class="form-control" value="102 °C">
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 1.5rem 0;">
+          <h4 style="color: #6ee7b7; margin-bottom: 0.75rem;">📋 Plan de Mantenimiento</h4>
+          <div class="form-group">
+            <label>Plan de Mantenimiento Detallado (según manual):</label>
+            <textarea name="plan_mantenimiento_texto" class="form-control" rows="5" placeholder="Pautas para 250h, 500h, 1000h y anual..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nueva-planta')">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar Planta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: REGISTRAR NUEVO TRABAJO DE MANTENIMIENTO CON FOTOS -->
+  <div class="modal-backdrop" id="modal-nuevo-trabajo">
+    <div class="modal-content" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3>➕ Registrar Trabajo de Mantenimiento</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-nuevo-trabajo')">×</button>
+      </div>
+      <form id="form-nuevo-trabajo" onsubmit="handleCreateTrabajo(event)" enctype="multipart/form-data">
+        <input type="hidden" name="planta_id" id="input-trabajo-planta-id">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Fecha del Servicio:</label>
+              <input type="date" name="fecha" id="input-trabajo-fecha" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label>Tipo de Mantenimiento:</label>
+              <select name="tipo_trabajo" class="form-control" required>
+                <option value="Mantenimiento Preventivo A (250h)">Preventivo A (250h)</option>
+                <option value="Mantenimiento Preventivo B (500h)">Preventivo B (500h)</option>
+                <option value="Mantenimiento Mayor (1000h)">Mayor (1000h / Anual)</option>
+                <option value="Mantenimiento Correctivo">Correctivo / Reparación</option>
+                <option value="Calibración y Pruebas">Calibración y Pruebas</option>
+                <option value="Atención de Emergencia">Atención de Emergencia</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Horómetro del Motor en el Servicio:</label>
+              <input type="number" step="0.1" name="horas_horometro" id="input-trabajo-horas" class="form-control" placeholder="Ej: 1450.5" required>
+            </div>
+            <div class="form-group">
+              <label>Técnico Responsable:</label>
+              <input type="text" name="tecnico" class="form-control" placeholder="Ej: Gabriel F. / Técnico IG" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Título del Trabajo Realizado:</label>
+            <input type="text" name="titulo" class="form-control" placeholder="Ej: Cambio de Aceite, Filtros y Calibración de AVR" required>
+          </div>
+          <div class="form-group">
+            <label>Descripción Detallada del Procedimiento:</label>
+            <textarea name="descripcion" class="form-control" rows="4" placeholder="Explica paso a paso lo realizado en la máquina..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label>Repuestos e Insumos Utilizados:</label>
+            <textarea name="repuestos_utilizados" class="form-control" rows="2" placeholder="Ej: 1x Filtro LF9009, 1x FS1000, 7 Galones Aceite 15W40..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Observaciones y Recomendaciones:</label>
+            <input type="text" name="observaciones" class="form-control" placeholder="Ej: Se recomienda verificar baterías en 30 días">
+          </div>
+          <div class="form-group">
+            <label>📸 Fotos del Trabajo (Antes, Durante y Después):</label>
+            <input type="file" name="fotos" class="form-control" multiple accept="image/*">
+            <small style="color: var(--text-dim); display: block; margin-top: 0.3rem;">Puedes seleccionar varias fotos del celular o computadora.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuevo-trabajo')">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-trabajo">Guardar Trabajo y Fotos</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: REGISTRAR NUEVO CASO DE CAMPO (ALIMENTAR AL AGENTE) -->
+  <div class="modal-backdrop" id="modal-nuevo-caso">
+    <div class="modal-content" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3>🧠 Alimentar al Agente con una Nueva Experiencia Real</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-nuevo-caso')">×</button>
+      </div>
+      <form id="form-nuevo-caso" onsubmit="handleCreateCase(event)">
+        <div class="modal-body">
+          <p style="font-size: 0.85rem; color: var(--accent-cyan); margin-bottom: 1rem;">
+            Al guardar este caso, el agente lo indexará de inmediato en su base vectorial para advertir a futuros técnicos cuando enfrenten fallas parecidas.
+          </p>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Técnico que Resolvió:</label>
+              <input type="text" name="tecnico" class="form-control" placeholder="Ej: Gabriel F." required>
+            </div>
+            <div class="form-group">
+              <label>Modelo de Planta / Motor:</label>
+              <input type="text" name="planta_modelo" class="form-control" placeholder="Ej: Cummins QSL9 / Caterpillar C15" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>🚨 Síntoma o Falla Presentada:</label>
+            <textarea name="sintoma" class="form-control" placeholder="¿Qué hacía la máquina? (Ej: No arrancaba, humo blanco, código de alarma...)" required></textarea>
+          </div>
+          <div class="form-group">
+            <label>🔍 ¿Qué descartaste primero que SÍ estaba bueno?:</label>
+            <textarea name="descartes_previos" class="form-control" placeholder="Ej: Batería con buen voltaje, fusibles intactos..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>🎯 ¿Cuál fue la CAUSA RAÍZ REAL comprobada en campo?:</label>
+            <textarea name="causa_raiz" class="form-control" placeholder="Ej: Breaker de alimentación del cargador auxiliar de baterías estaba bajado..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label>🛠️ Solución Aplicada Paso a Paso:</label>
+            <textarea name="solucion" class="form-control" placeholder="¿Cómo se resolvió de forma definitiva?" required></textarea>
+          </div>
+          <div class="form-group">
+            <label>💡 Consejo de Campo / Lección Aprendida:</label>
+            <input type="text" name="consejo_campo" class="form-control" placeholder="Ej: Revisar siempre el cargador de flote antes de culpar al motor de arranque">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuevo-caso')">Cancelar</button>
+          <button type="submit" class="btn btn-success">Indexar y Alimentar al Agente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 5: SUBIR NUEVO MANUAL PDF -->
+  <div class="modal-backdrop" id="modal-subir-manual">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📚 Subir Manual o Guía Técnica</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-subir-manual')">×</button>
+      </div>
+      <form id="form-subir-manual" onsubmit="handleUploadManual(event)" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Título del Manual:</label>
+            <input type="text" name="titulo" class="form-control" placeholder="Ej: Manual de Operación y Mantenimiento Cummins QSL9" required>
+          </div>
+          <div class="form-group">
+            <label>Categoría:</label>
+            <select name="categoria" class="form-control">
+              <option value="Motor">Motor Diésel</option>
+              <option value="Generador">Generador / Alternador</option>
+              <option value="Controlador">Controlador / Transferencia ATS</option>
+              <option value="Mantenimiento">Plan y Mantenimiento</option>
+              <option value="General">Manual General</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Archivo PDF:</label>
+            <input type="file" name="file" class="form-control" accept=".pdf" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-subir-manual')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Subir y Registrar Manual</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 6: LIGHTBOX DE FOTOS EN ALTA RESOLUCIÓN -->
+  <div class="lightbox-modal" id="lightbox-modal" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">×</button>
+    <div class="lightbox-image-container" onclick="event.stopPropagation()">
+      <img id="lightbox-img" src="" alt="Foto de trabajo ampliada">
+    </div>
+    <div class="lightbox-caption" id="lightbox-caption" onclick="event.stopPropagation()"></div>
+  </div>
+
+  <!-- Application Logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
