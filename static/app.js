@@ -1,9 +1,10 @@
 /* =========================================================================
-   DIESELGEN INTELLIGENCE - JAVASCRIPT APPLICATION CORE
-   SPA Router, Plant Dossier Renderer, Photo Lightbox & Contextual AI Agent
+   DIESELGEN INTELLIGENCE - SPA ENGINE (UI/UX MINIMALISTA & RESPONSIVE)
+   Features: Hash Routing (F5 Persistence), Plant CRUD (Create, Edit, Delete),
+   Lightbox Viewer, Multi-Sede Hierarchy & Contextual AI Agent
    ========================================================================= */
 
-// --- Global Application State ---
+// --- Estado Global de la Aplicación ---
 const state = {
   currentView: 'sedes',
   sedes: [],
@@ -12,16 +13,26 @@ const state = {
   allPlantas: [],
   allCases: [],
   chatPlantaId: null,
-  chatMessages: []
+  plantaToDeleteId: null
 };
 
 // =========================================================================
-// INITIALIZATION
+// INICIALIZACIÓN Y ENRUTAMIENTO PERSISTENTE (HASH ROUTER)
 // =========================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-  loadInitialData();
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadInitialData();
   setDefaultJobDate();
+
+  // Escuchar cambios de hash para navegación y persistencia F5
+  window.addEventListener('hashchange', handleHashRouting);
+  
+  // Procesar hash inicial en la carga de la página
+  if (window.location.hash) {
+    handleHashRouting();
+  } else {
+    navigateToHash('#/sedes');
+  }
 });
 
 function setDefaultJobDate() {
@@ -32,6 +43,28 @@ function setDefaultJobDate() {
   }
 }
 
+// Notificaciones Toast Minimalistas
+function showToast(message, type = 'success') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.classList.add('toast-show');
+  });
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
 async function loadInitialData() {
   try {
     await Promise.all([
@@ -40,12 +73,72 @@ async function loadInitialData() {
       fetchAllPlantas()
     ]);
   } catch (err) {
-    console.error('Error inicializando datos:', err);
+    console.error('Error al inicializar datos:', err);
+  }
+}
+
+function handleHashRouting() {
+  const hash = window.location.hash || '#/sedes';
+
+  if (hash === '#/sedes' || hash === '') {
+    showView('sedes');
+    fetchSedes();
+  } else if (hash.startsWith('#/sede/')) {
+    const sedeId = parseInt(hash.replace('#/sede/', ''));
+    if (sedeId) openSede(sedeId, false);
+  } else if (hash.startsWith('#/planta/')) {
+    const plantaId = parseInt(hash.replace('#/planta/', ''));
+    if (plantaId) openPlanta(plantaId, false);
+  } else if (hash === '#/cases') {
+    showView('cases');
+    fetchCases();
+  } else if (hash === '#/manuals') {
+    showView('manuals');
+    fetchManuals();
+  }
+}
+
+function navigateToHash(hash) {
+  if (window.location.hash === hash) {
+    handleHashRouting();
+  } else {
+    window.location.hash = hash;
+  }
+}
+
+function showView(viewName) {
+  state.currentView = viewName;
+  document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+
+  // Actualizar botones del navbar
+  document.querySelectorAll('.nav-actions .btn').forEach(b => b.classList.remove('btn-primary'));
+  
+  if (viewName === 'sedes') {
+    document.getElementById('view-sedes').classList.add('active');
+  } else if (viewName === 'sede-plantas') {
+    document.getElementById('view-sede-plantas').classList.add('active');
+  } else if (viewName === 'planta-detail') {
+    document.getElementById('view-planta-detail').classList.add('active');
+  } else if (viewName === 'cases') {
+    document.getElementById('view-cases').classList.add('active');
+  } else if (viewName === 'manuals') {
+    document.getElementById('view-manuals').classList.add('active');
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function returnToCurrentSede() {
+  if (state.currentPlanta && state.currentPlanta.sede_id) {
+    navigateToHash(`#/sede/${state.currentPlanta.sede_id}`);
+  } else if (state.currentSede) {
+    navigateToHash(`#/sede/${state.currentSede.id}`);
+  } else {
+    navigateToHash('#/sedes');
   }
 }
 
 // =========================================================================
-// API CALLS
+// API CALLS BÁSICAS
 // =========================================================================
 
 async function fetchStats() {
@@ -56,7 +149,6 @@ async function fetchStats() {
       document.getElementById('stat-sedes-count').textContent = stats.total_sedes;
       document.getElementById('stat-plantas-count').textContent = `${stats.operativas}/${stats.total_plantas}`;
       document.getElementById('stat-kva-count').textContent = `${stats.total_kva.toLocaleString()} kVA`;
-      document.getElementById('stat-casos-count').textContent = `${stats.total_casos} casos`;
     }
   } catch (e) {
     console.warn('Error al obtener estadísticas:', e);
@@ -89,39 +181,6 @@ async function fetchAllPlantas() {
 }
 
 // =========================================================================
-// VIEW ROUTING
-// =========================================================================
-
-function navigateTo(viewName) {
-  state.currentView = viewName;
-  document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
-
-  if (viewName === 'sedes') {
-    document.getElementById('view-sedes').classList.add('active');
-    fetchSedes();
-  } else if (viewName === 'sede-plantas') {
-    document.getElementById('view-sede-plantas').classList.add('active');
-  } else if (viewName === 'planta-detail') {
-    document.getElementById('view-planta-detail').classList.add('active');
-  } else if (viewName === 'cases') {
-    document.getElementById('view-cases').classList.add('active');
-    fetchCases();
-  } else if (viewName === 'manuals') {
-    document.getElementById('view-manuals').classList.add('active');
-    fetchManuals();
-  }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function returnToCurrentSede() {
-  if (state.currentSede) {
-    openSede(state.currentSede.id);
-  } else {
-    navigateTo('sedes');
-  }
-}
-
-// =========================================================================
 // VISTA 1: SEDES HUB
 // =========================================================================
 
@@ -130,12 +189,16 @@ function renderSedesGrid(sedes) {
   if (!container) return;
 
   if (sedes.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 3rem;">No hay sedes registradas aún.</div>`;
+    container.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border-light);">
+        No hay sedes registradas aún.<br><br>
+        <button class="btn btn-primary" onclick="openModal('modal-nueva-sede')">➕ Registrar la Primera Sede</button>
+      </div>`;
     return;
   }
 
   container.innerHTML = sedes.map(sede => `
-    <div class="sede-card" onclick="openSede(${sede.id})">
+    <div class="sede-card" onclick="navigateToHash('#/sede/${sede.id}')">
       <div>
         <div class="sede-card-header">
           <div class="sede-icon">${sede.icono || '🏢'}</div>
@@ -145,8 +208,8 @@ function renderSedesGrid(sedes) {
         <div class="sede-address">
           <span>📍</span> ${sede.direccion || sede.ciudad}
         </div>
-        <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem; line-height: 1.4;">
-          ${sede.notas || 'Sede operativa de generación eléctrica.'}
+        <p style="font-size: 0.88rem; color: var(--text-body); margin-bottom: 1rem; line-height: 1.4;">
+          ${sede.notas || 'Gestión centralizada de grupos electrógenos.'}
         </p>
       </div>
 
@@ -167,7 +230,7 @@ function renderSedesGrid(sedes) {
         </div>
 
         <div class="sede-card-footer">
-          <span>Ver Grupos Electrógenos</span>
+          <span>Ver Generadores</span>
           <span>➔</span>
         </div>
       </div>
@@ -175,7 +238,12 @@ function renderSedesGrid(sedes) {
   `).join('');
 }
 
-async function openSede(sedeId) {
+async function openSede(sedeId, updateHash = true) {
+  if (updateHash) {
+    navigateToHash(`#/sede/${sedeId}`);
+    return;
+  }
+
   try {
     const res = await fetch(`/api/sedes/${sedeId}`);
     if (!res.ok) throw new Error('Error al cargar sede');
@@ -188,7 +256,7 @@ async function openSede(sedeId) {
     document.getElementById('sede-banner-info').innerHTML = `
       <div class="sede-banner-info">
         <h2>${data.sede.icono || '🏢'} ${data.sede.nombre} <span class="badge-code">${data.sede.codigo}</span></h2>
-        <p>${data.sede.notas || 'Gestión centralizada de generadores diésel en esta sede.'}</p>
+        <p>${data.sede.notas || 'Gestión centralizada de plantas eléctricas en esta instalación.'}</p>
         <div class="sede-banner-contact">
           <span>📍 ${data.sede.direccion || data.sede.ciudad}</span>
           ${data.sede.contacto_nombre ? `<span>👤 ${data.sede.contacto_nombre} (${data.sede.contacto_cargo || 'Supervisor'})</span>` : ''}
@@ -203,14 +271,14 @@ async function openSede(sedeId) {
     `;
 
     renderPlantasGrid(data.plantas);
-    navigateTo('sede-plantas');
+    showView('sede-plantas');
   } catch (err) {
-    alert('Error al abrir la sede: ' + err.message);
+    showToast('Error al abrir la sede: ' + err.message, 'danger');
   }
 }
 
 // =========================================================================
-// VISTA 2: PLANTAS GRID
+// VISTA 2: PLANTAS GRID POR SEDE
 // =========================================================================
 
 function renderPlantasGrid(plantas) {
@@ -219,9 +287,9 @@ function renderPlantasGrid(plantas) {
 
   if (plantas.length === 0) {
     container.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 3rem;">
+      <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border-light);">
         No hay plantas registradas en esta sede.<br><br>
-        <button class="btn btn-primary btn-sm" onclick="openAddPlantaModalForCurrentSede()">➕ Agregar la primera planta</button>
+        <button class="btn btn-primary" onclick="openAddPlantaModalForCurrentSede()">➕ Registrar la Primera Planta</button>
       </div>`;
     return;
   }
@@ -255,29 +323,35 @@ function renderPlantasGrid(plantas) {
 
           <div class="planta-key-specs">
             <div class="spec-row">
-              <span class="spec-name"><span>🔧</span> Motor:</span>
+              <span class="spec-name">🔧 Motor:</span>
               <span class="spec-val">${p.motor_marca || 'N/D'} ${p.motor_modelo || ''}</span>
             </div>
             <div class="spec-row">
-              <span class="spec-name"><span>⚡</span> Alternador:</span>
+              <span class="spec-name">⚡ Alternador:</span>
               <span class="spec-val">${p.generador_marca || 'N/D'} (${p.generador_voltaje || '208/120V'})</span>
             </div>
             <div class="spec-row">
-              <span class="spec-name"><span>🎛️</span> Controlador:</span>
+              <span class="spec-name">🎛️ Controlador:</span>
               <span class="spec-val">${p.controlador_marca || 'DSE'} ${p.controlador_modelo || ''}</span>
             </div>
             <div class="spec-row">
-              <span class="spec-name"><span>📅</span> Último Servicio:</span>
-              <span class="spec-val" style="color: var(--accent-cyan);">${p.ultima_fecha_mantenimiento || 'Sin registros'}</span>
+              <span class="spec-name">📅 Último Servicio:</span>
+              <span class="spec-val" style="color: var(--primary);">${p.ultima_fecha_mantenimiento || 'Sin registros'}</span>
             </div>
           </div>
         </div>
 
-        <div class="planta-card-actions">
-          <button class="btn btn-primary" onclick="openPlanta(${p.id})">
-            📖 Ficha Técnica & Trabajos
+        <div style="display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="navigateToHash('#/planta/${p.id}')">
+            📖 Ficha Técnica
           </button>
-          <button class="btn btn-secondary btn-icon" title="Consultar Agente IA de esta Planta" onclick="openChatForPlanta(${p.id})">
+          <button class="btn btn-secondary btn-sm" title="Editar Planta" onclick="openEditPlantaModal(${p.id})">
+            ✏️ Editar
+          </button>
+          <button class="btn btn-secondary btn-sm" style="color: var(--danger);" title="Eliminar Planta" onclick="promptDeletePlanta(${p.id}, '${escapeQuotes(p.nombre)}')">
+            🗑️
+          </button>
+          <button class="btn btn-secondary btn-icon btn-sm" title="Consultar Agente IA" onclick="openChatForPlanta(${p.id})">
             🤖
           </button>
         </div>
@@ -287,10 +361,15 @@ function renderPlantasGrid(plantas) {
 }
 
 // =========================================================================
-// VISTA 3: FICHA INTEGRAL DE PLANTA (TABS, SPECS & HISTORIAL)
+// VISTA 3: FICHA INTEGRAL DE PLANTA (TABS, EDICIÓN & BORRADO)
 // =========================================================================
 
-async function openPlanta(plantaId) {
+async function openPlanta(plantaId, updateHash = true) {
+  if (updateHash) {
+    navigateToHash(`#/planta/${plantaId}`);
+    return;
+  }
+
   try {
     const res = await fetch(`/api/plantas/${plantaId}`);
     if (!res.ok) throw new Error('Error al obtener datos de la planta');
@@ -304,7 +383,7 @@ async function openPlanta(plantaId) {
     document.getElementById('breadcrumb-link-sede').textContent = p.sede_nombre;
     document.getElementById('breadcrumb-planta-name').textContent = p.nombre;
 
-    // Enlazar contexto de chat automáticamente a esta planta
+    // Vincular chat automáticamente
     setChatPlantContext(p.id);
 
     // Summary Header Banner
@@ -321,16 +400,22 @@ async function openPlanta(plantaId) {
             <span class="badge-code">${p.codigo}</span>
             <span class="planta-status-badge ${statusClass}">● ${p.estado}</span>
             <span class="capacity-badge">⚡ ${p.capacidad_kva} kVA / ${p.capacidad_kw} kW</span>
-            <span class="badge-code" style="color: #cbd5e1;">Prioridad: ${p.prioridad || 'Crítica'}</span>
+            <span class="badge-code" style="color: var(--text-body);">Prioridad: ${p.prioridad || 'Crítica'}</span>
           </div>
         </div>
 
         <div class="planta-detail-quick-actions">
-          <button class="btn btn-primary" onclick="openChatForCurrentPlanta('Hola, estoy frente a esta planta. Dame un diagnóstico rápido del equipo y el estado de sus mantenimientos.')">
-            🤖 Asistente IA de esta Planta
+          <button class="btn btn-secondary btn-sm" onclick="openEditPlantaModal(${p.id})">
+            ✏️ Editar Ficha
           </button>
-          <button class="btn btn-success" onclick="openNewTrabajoModalForPlanta(${p.id})">
+          <button class="btn btn-secondary btn-sm" style="color: var(--danger);" onclick="promptDeletePlanta(${p.id}, '${escapeQuotes(p.nombre)}')">
+            🗑️ Eliminar
+          </button>
+          <button class="btn btn-success btn-sm" onclick="openNewTrabajoModalForPlanta(${p.id})">
             ➕ Registrar Trabajo
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="openChatForCurrentPlanta('Hola, estoy frente a esta planta. Dame un diagnóstico rápido del equipo.')">
+            🤖 Asistente IA
           </button>
         </div>
       </div>
@@ -338,19 +423,19 @@ async function openPlanta(plantaId) {
       <div class="detail-metrics-row">
         <div class="detail-metric-card">
           <div class="label">Horómetro Actual</div>
-          <div class="value" style="color: var(--accent-cyan); font-family: var(--font-mono);">${p.horas_operacion.toLocaleString()} hrs</div>
+          <div class="value" style="color: var(--primary); font-family: var(--font-mono);">${p.horas_operacion.toLocaleString()} hrs</div>
         </div>
         <div class="detail-metric-card">
           <div class="label">Próximo Mantenimiento</div>
-          <div class="value" style="color: var(--accent-amber);">${p.proximo_mantenimiento_horas ? `${p.proximo_mantenimiento_horas}h` : '250h'}</div>
+          <div class="value" style="color: var(--warning);">${p.proximo_mantenimiento_horas ? `${p.proximo_mantenimiento_horas}h` : '250h'}</div>
         </div>
         <div class="detail-metric-card">
           <div class="label">Tensión Nominal</div>
           <div class="value">${p.generador_voltaje || '208/120V'}</div>
         </div>
         <div class="detail-metric-card">
-          <div class="label">Intervenciones Registradas</div>
-          <div class="value">${trabajos.length} trabajos</div>
+          <div class="label">Trabajos Realizados</div>
+          <div class="value">${trabajos.length} registros</div>
         </div>
       </div>
     `;
@@ -370,12 +455,12 @@ async function openPlanta(plantaId) {
     // Render TAB 5: Historial de Trabajos y Fotos
     renderTrabajosHistory(trabajos);
 
-    // Switch to first tab
+    // Activar pestaña inicial
     switchPlantaTab('tab-plan');
 
-    navigateTo('planta-detail');
+    showView('planta-detail');
   } catch (err) {
-    alert('Error al abrir la planta: ' + err.message);
+    showToast('Error al abrir la planta: ' + err.message, 'danger');
   }
 }
 
@@ -393,43 +478,41 @@ function switchPlantaTab(tabId) {
 function renderMotorSpecs(p) {
   const container = document.getElementById('motor-specs-container');
   container.innerHTML = `
-    <!-- Box 1: Identificación y Desempeño Mecánico -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">🔧</span>
-        <h3>Identificación & Desempeño del Motor</h3>
+        <h3>Identificación & Desempeño Mecánico</h3>
       </div>
       <table class="spec-table">
         <tr><th>Marca del Motor:</th><td>${p.motor_marca || 'N/D'}</td></tr>
         <tr><th>Modelo del Motor:</th><td><span class="tag-code">${p.motor_modelo || 'N/D'}</span></td></tr>
         <tr><th>Número de Serial:</th><td>${p.motor_serial || 'N/D'}</td></tr>
-        <tr><th>Cilindrada y Configuración:</th><td>${p.motor_cilindros || '6 en línea'}</td></tr>
+        <tr><th>Cilindros / Configuración:</th><td>${p.motor_cilindros || '6 en línea'}</td></tr>
         <tr><th>Aspiración:</th><td>${p.motor_aspiracion || 'Turboalimentado'}</td></tr>
         <tr><th>Potencia Mecánica:</th><td><strong>${p.motor_potencia_hp || 'N/D'} HP</strong></td></tr>
-        <tr><th>Sistema de Inyección / Gobernador:</th><td>${p.motor_gobernador || 'ECM Electrónico'}</td></tr>
+        <tr><th>Sistema de Inyección / ECM:</th><td>${p.motor_gobernador || 'ECM Electrónico'}</td></tr>
         <tr><th>Combustible:</th><td>${p.motor_tipo_combustible || 'Diésel #2'}</td></tr>
         <tr><th>Sistema Eléctrico DC:</th><td>${p.motor_sistema_electrico_dc || '24V DC'}</td></tr>
         <tr><th>Baterías de Arranque:</th><td>${p.motor_baterias || '2x 12V 1000 CCA'}</td></tr>
       </table>
     </div>
 
-    <!-- Box 2: Lubricación, Refrigeración y Filtración OEM -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">🛢️</span>
-        <h3>Fluidos, Lubricación & Tren de Filtración OEM</h3>
+        <h3>Fluidos & Tren de Filtración OEM</h3>
       </div>
       <table class="spec-table">
         <tr><th>Capacidad de Aceite:</th><td><strong>${p.motor_capacidad_aceite || 'N/D'}</strong></td></tr>
         <tr><th>Viscosidad Recomendada:</th><td>${p.motor_viscosidad_aceite || 'SAE 15W-40 CI-4/CK-4'}</td></tr>
-        <tr><th>Capacidad de Refrigerante:</th><td>${p.motor_capacidad_refrigerante || 'N/D'}</td></tr>
+        <tr><th>Capacidad Refrigerante:</th><td>${p.motor_capacidad_refrigerante || 'N/D'}</td></tr>
         <tr><th>Tipo de Refrigerante:</th><td>${p.motor_tipo_refrigerante || '50/50 con aditivo DCA4'}</td></tr>
         <tr><th>Filtro de Aceite Lubricante:</th><td><span class="tag-code" style="color: var(--success); background: var(--success-light); border-color: var(--success-border);">${p.motor_filtro_aceite || 'N/D'}</span></td></tr>
-        <tr><th>Filtro Combustible Primario (Separador):</th><td><span class="tag-code">${p.motor_filtro_combustible_primario || 'N/D'}</span></td></tr>
+        <tr><th>Filtro Combustible Primario:</th><td><span class="tag-code">${p.motor_filtro_combustible_primario || 'N/D'}</span></td></tr>
         <tr><th>Filtro Combustible Secundario:</th><td><span class="tag-code">${p.motor_filtro_combustible_secundario || 'N/D'}</span></td></tr>
         <tr><th>Filtro de Aire:</th><td><span class="tag-code">${p.motor_filtro_aire || 'N/D'}</span></td></tr>
         <tr><th>Filtro de Agua / Anticorrosivo:</th><td><span class="tag-code">${p.motor_filtro_agua_refrigerante || 'N/A'}</span></td></tr>
-        <tr><th>Notas Técnicas:</th><td>${p.motor_notes || p.motor_notas || 'Mantener calentador de camisa energizado.'}</td></tr>
+        <tr><th>Notas Técnicas:</th><td>${p.motor_notas || 'Mantener calentador de camisa energizado.'}</td></tr>
       </table>
     </div>
   `;
@@ -438,7 +521,6 @@ function renderMotorSpecs(p) {
 function renderGeneradorSpecs(p) {
   const container = document.getElementById('generador-specs-container');
   container.innerHTML = `
-    <!-- Box 1: Alternador y Parámetros Eléctricos -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">⚡</span>
@@ -457,7 +539,6 @@ function renderGeneradorSpecs(p) {
       </table>
     </div>
 
-    <!-- Box 2: Regulación de Voltaje (AVR) y Aislamiento -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">🎚️</span>
@@ -477,7 +558,6 @@ function renderGeneradorSpecs(p) {
 function renderControladorSpecs(p) {
   const container = document.getElementById('controlador-specs-container');
   container.innerHTML = `
-    <!-- Box 1: Identificación y Modos del Panel -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">🎛️</span>
@@ -494,7 +574,6 @@ function renderControladorSpecs(p) {
       </table>
     </div>
 
-    <!-- Box 2: Umbrales de Seguridad y Disparo -->
     <div class="spec-box">
       <div class="spec-box-header">
         <span class="icon">🚨</span>
@@ -517,9 +596,9 @@ function renderTrabajosHistory(trabajos) {
 
   if (trabajos.length === 0) {
     container.innerHTML = `
-      <div style="text-align: center; color: var(--text-dim); padding: 3rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+      <div style="text-align: center; color: var(--text-muted); padding: 3rem; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border-light);">
         No hay trabajos de mantenimiento registrados en esta planta.<br><br>
-        <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuevo-trabajo')">➕ Registrar el primer trabajo</button>
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuevo-trabajo')">➕ Registrar el Primer Trabajo</button>
       </div>`;
     return;
   }
@@ -528,8 +607,8 @@ function renderTrabajosHistory(trabajos) {
     let photosHtml = '';
     if (t.fotos && t.fotos.length > 0) {
       photosHtml = `
-        <div style="margin-top: 1rem;">
-          <strong style="font-size: 0.82rem; color: var(--text-dim); text-transform: uppercase;">📸 Registro Fotográfico del Trabajo:</strong>
+        <div style="margin-top: 0.85rem;">
+          <strong style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">📸 Fotos del Trabajo:</strong>
           <div class="trabajo-photos-grid">
             ${t.fotos.map((src, idx) => `
               <div class="photo-thumb" onclick="openLightbox('${src}', '${escapeQuotes(t.titulo)} - Fecha: ${t.fecha} por ${t.tecnico}')">
@@ -550,7 +629,7 @@ function renderTrabajosHistory(trabajos) {
             <span class="hours">⏱️ ${t.horas_horometro ? t.horas_horometro.toLocaleString() : 'N/D'} hrs</span>
             <span class="tech">👨‍🔧 ${t.tecnico}</span>
           </div>
-          <span class="badge-code" style="color: #93c5fd; background: rgba(59, 130, 246, 0.15);">
+          <span class="badge-code">
             ${t.tipo_trabajo}
           </span>
         </div>
@@ -565,7 +644,7 @@ function renderTrabajosHistory(trabajos) {
         ` : ''}
 
         ${t.observaciones ? `
-          <div style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.5rem;">
+          <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
             <em>💡 Recomendaciones:</em> ${t.observaciones}
           </div>
         ` : ''}
@@ -579,6 +658,134 @@ function renderTrabajosHistory(trabajos) {
 function escapeQuotes(str) {
   if (!str) return '';
   return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// =========================================================================
+// EDICIÓN Y BORRADO DE PLANTAS (CRUD COMPLETO)
+// =========================================================================
+
+async function openEditPlantaModal(plantaId) {
+  let p = state.allPlantas.find(x => x.id === plantaId);
+  if (!p || !p.motor_marca) {
+    try {
+      const res = await fetch(`/api/plantas/${plantaId}`);
+      if (res.ok) {
+        const data = await res.json();
+        p = data.planta;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  if (!p) {
+    showToast('No se pudo cargar la planta para edición.', 'danger');
+    return;
+  }
+
+  document.getElementById('edit-planta-id').value = p.id;
+  document.getElementById('edit-codigo').value = p.codigo || '';
+  document.getElementById('edit-nombre').value = p.nombre || '';
+  document.getElementById('edit-ensambladora').value = p.ensambladora || '';
+  document.getElementById('edit-ubicacion').value = p.ubicacion_interna || '';
+  document.getElementById('edit-kva').value = p.capacidad_kva || '';
+  document.getElementById('edit-kw').value = p.capacidad_kw || '';
+  document.getElementById('edit-horas').value = p.horas_operacion || 0;
+  document.getElementById('edit-estado').value = p.estado || 'Operativa';
+
+  document.getElementById('edit-motor-marca').value = p.motor_marca || '';
+  document.getElementById('edit-motor-modelo').value = p.motor_modelo || '';
+  document.getElementById('edit-motor-hp').value = p.motor_potencia_hp || '';
+  document.getElementById('edit-motor-aceite').value = p.motor_capacidad_aceite || '';
+  document.getElementById('edit-motor-filtro-aceite').value = p.motor_filtro_aceite || '';
+  document.getElementById('edit-motor-filtro-comb').value = p.motor_filtro_combustible_primario || '';
+
+  document.getElementById('edit-gen-marca').value = p.generador_marca || '';
+  document.getElementById('edit-gen-modelo').value = p.generador_modelo || '';
+  document.getElementById('edit-gen-voltaje').value = p.generador_voltaje || '';
+  document.getElementById('edit-gen-avr').value = p.generador_modelo_avr || '';
+
+  document.getElementById('edit-ctrl-marca').value = p.controlador_marca || '';
+  document.getElementById('edit-ctrl-modelo').value = p.controlador_modelo || '';
+  document.getElementById('edit-ctrl-disparo-aceite').value = p.controlador_umbral_baja_presion_aceite || '';
+  document.getElementById('edit-ctrl-disparo-temp').value = p.controlador_umbral_alta_temperatura || '';
+  document.getElementById('edit-plan-texto').value = p.plan_mantenimiento_texto || '';
+
+  openModal('modal-editar-planta');
+}
+
+async function handleUpdatePlanta(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData.entries());
+  const plantaId = data.planta_id;
+  delete data.planta_id;
+
+  // Conversiones
+  data.capacidad_kva = parseFloat(data.capacidad_kva);
+  data.capacidad_kw = parseFloat(data.capacidad_kw);
+  data.horas_operacion = parseFloat(data.horas_operacion || 0);
+  if (data.motor_potencia_hp) data.motor_potencia_hp = parseFloat(data.motor_potencia_hp);
+
+  try {
+    const res = await fetch(`/api/plantas/${plantaId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Error al actualizar la planta');
+
+    closeModal('modal-editar-planta');
+    await fetchAllPlantas();
+    await fetchStats();
+
+    // Si estábamos viendo la planta, recargar su ficha
+    if (state.currentView === 'planta-detail') {
+      openPlanta(plantaId, false);
+    } else if (state.currentView === 'sede-plantas' && state.currentSede) {
+      openSede(state.currentSede.id, false);
+    }
+
+    showToast('✅ ¡Ficha técnica actualizada en la base de datos!', 'success');
+  } catch (err) {
+    showToast('Error al actualizar planta: ' + err.message, 'danger');
+  }
+}
+
+function promptDeletePlanta(plantaId, nombrePlanta) {
+  state.plantaToDeleteId = plantaId;
+  document.getElementById('delete-planta-nombre').textContent = `"${nombrePlanta}"`;
+  openModal('modal-confirmar-eliminar');
+}
+
+async function confirmDeletePlanta() {
+  const plantaId = state.plantaToDeleteId;
+  if (!plantaId) return;
+
+  try {
+    const res = await fetch(`/api/plantas/${plantaId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('Error al eliminar planta');
+
+    closeModal('modal-confirmar-eliminar');
+    state.plantaToDeleteId = null;
+
+    await fetchAllPlantas();
+    await fetchStats();
+
+    showToast('🗑️ Planta eliminada de la base de datos.', 'info');
+
+    // Redireccionar a la sede correspondiente
+    if (state.currentSede) {
+      navigateToHash(`#/sede/${state.currentSede.id}`);
+    } else {
+      navigateToHash('#/sedes');
+    }
+  } catch (err) {
+    showToast('Error al eliminar planta: ' + err.message, 'danger');
+  }
 }
 
 // =========================================================================
@@ -620,19 +827,23 @@ function renderCases(cases) {
   if (!container) return;
 
   if (cases.length === 0) {
-    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 3rem;">No hay casos registrados aún.</div>`;
+    container.innerHTML = `
+      <div style="text-align: center; color: var(--text-muted); padding: 3rem; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border-light);">
+        No hay casos registrados aún.<br><br>
+        <button class="btn btn-primary" onclick="openModal('modal-nuevo-caso')">➕ Registrar el Primer Caso</button>
+      </div>`;
     return;
   }
 
   container.innerHTML = cases.map(c => `
-    <div class="trabajo-card" style="border-left: 3px solid #3b82f6;">
+    <div class="trabajo-card" style="border-left: 3px solid var(--primary);">
       <div class="trabajo-header">
         <div class="trabajo-meta">
           <span class="badge-code">Caso #${c.id}</span>
           <span class="tech">👨‍🔧 Técnico: ${c.tecnico}</span>
-          <span class="badge-code" style="color: #93c5fd;">${c.planta_modelo}</span>
+          <span class="badge-code">${c.planta_modelo}</span>
         </div>
-        <div style="font-size: 0.8rem; color: var(--text-dim);">
+        <div style="font-size: 0.8rem; color: var(--text-muted);">
           📅 ${c.timestamp || 'Fecha previa'}
         </div>
       </div>
@@ -660,8 +871,8 @@ function renderCases(cases) {
       ` : ''}
 
       <div style="margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between;">
-        <span style="font-size: 0.8rem; color: var(--text-dim);">
-          👍 Validado útil: <strong>${c.utilidad_count || 1}</strong> veces por técnicos en campo
+        <span style="font-size: 0.8rem; color: var(--text-muted);">
+          👍 Validado útil: <strong>${c.utilidad_count || 1}</strong> veces
         </span>
         <button class="btn btn-secondary btn-sm" onclick="upvoteCase(${c.id})">
           👍 Me sirvió esta solución
@@ -691,7 +902,7 @@ async function upvoteCase(caseId) {
   try {
     const res = await fetch(`/api/cases/${caseId}/utility`, { method: 'POST' });
     if (res.ok) {
-      alert('¡Gracias! La experiencia ha sido revalidada.');
+      showToast('👍 ¡Gracias! La experiencia ha sido revalidada.', 'success');
       fetchCases();
     }
   } catch (e) {
@@ -720,7 +931,10 @@ function renderManuals(manuals) {
   if (!container) return;
 
   if (manuals.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 3rem;">No hay manuales cargados.</div>`;
+    container.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem; background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border-light);">
+        No hay manuales cargados aún.
+      </div>`;
     return;
   }
 
@@ -832,11 +1046,9 @@ async function sendChatMessage() {
   const message = input.value.trim();
   if (!message) return;
 
-  // Append user bubble
   appendChatBubble('user', message);
   input.value = '';
 
-  // Append temporary bot typing indicator
   const typingId = appendChatBubble('bot', '<em>🔍 Consultando ficha técnica de la planta, manuales y precedentes de campo...</em>');
 
   try {
@@ -849,22 +1061,20 @@ async function sendChatMessage() {
       })
     });
 
-    if (!res.ok) throw new Error('Error al procesar consulta con el agente');
+    if (!res.ok) throw new Error('Error al procesar consulta');
     const data = await res.json();
 
-    // Replace typing indicator with markdown parsed content
     const botBubble = document.getElementById(typingId);
     if (botBubble) {
-      botBubble.innerHTML = marked.parse(data.response || 'Sin respuesta del asistente.');
+      botBubble.innerHTML = marked.parse(data.response || 'Sin respuesta.');
     }
   } catch (err) {
     const botBubble = document.getElementById(typingId);
     if (botBubble) {
-      botBubble.innerHTML = `<span style="color: #f87171;">⚠️ Hubo una dificultad momentánea con la red del modelo. Intenta nuevamente.</span>`;
+      botBubble.innerHTML = `<span style="color: var(--danger);">⚠️ Dificultad temporal con el servicio de IA. Intenta nuevamente.</span>`;
     }
   }
 
-  // Auto scroll to bottom
   const container = document.getElementById('chat-messages-container');
   container.scrollTop = container.scrollHeight;
 }
@@ -886,27 +1096,23 @@ function clearChat() {
   container.innerHTML = `
     <div class="chat-bubble bot">
       👋 <strong>Conversación reiniciada.</strong><br><br>
-      Estoy listo para asistirte con el diagnóstico de campo, especificaciones de motor/generador/controlador y checklist de servicio.
+      Estoy listo para responder en base a las características de motor, alternador, controlador y plan de mantenimiento.
     </div>
   `;
 }
 
 // =========================================================================
-// MODALS MANAGEMENT & FORM HANDLERS
+// MODALES Y FORMULARIOS
 // =========================================================================
 
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.add('open');
-  }
+  if (modal) modal.classList.add('open');
 }
 
 function closeModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.remove('open');
-  }
+  if (modal) modal.classList.remove('open');
 }
 
 function updateModalSedeOptions() {
@@ -951,20 +1157,19 @@ async function handleCreateSede(event) {
     closeModal('modal-nueva-sede');
     form.reset();
     await loadInitialData();
-    alert('✅ ¡Sede registrada exitosamente!');
+    showToast('✅ ¡Sede registrada exitosamente en la base de datos!', 'success');
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error al registrar sede: ' + err.message, 'danger');
   }
 }
 
-// 2. Submit Nueva Planta
+// 2. Submit Nueva Planta (GUARDADA DE FORMA PERMANENTE EN BASE DE DATOS)
 async function handleCreatePlanta(event) {
   event.preventDefault();
   const form = event.target;
   const formData = new FormData(form);
   const data = Object.fromEntries(formData.entries());
 
-  // Conversión de tipos numéricos
   data.sede_id = parseInt(data.sede_id);
   data.capacidad_kva = parseFloat(data.capacidad_kva);
   data.capacidad_kw = parseFloat(data.capacidad_kw);
@@ -978,28 +1183,32 @@ async function handleCreatePlanta(event) {
       body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error('Error al registrar planta');
+    const result = await res.json();
+    const newPlantaId = result.id;
+
     closeModal('modal-nueva-planta');
     form.reset();
+    
+    // Actualizar datos globales
     await fetchAllPlantas();
-    if (state.currentSede && state.currentSede.id === data.sede_id) {
-      openSede(state.currentSede.id);
-    } else {
-      navigateTo('sedes');
-    }
-    alert('✅ ¡Grupo electrógeno registrado exitosamente con ficha técnica completa!');
+    await fetchStats();
+
+    // Redireccionar inmediatamente a la nueva planta para verla persistida
+    navigateToHash(`#/planta/${newPlantaId}`);
+    showToast('✅ ¡Planta guardada exitosamente en la base de datos!', 'success');
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error al registrar planta: ' + err.message, 'danger');
   }
 }
 
-// 3. Submit Nuevo Trabajo de Mantenimiento (Con Fotos)
+// 3. Submit Trabajo con Fotos
 async function handleCreateTrabajo(event) {
   event.preventDefault();
   const form = event.target;
   const formData = new FormData(form);
   const submitBtn = document.getElementById('btn-submit-trabajo');
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Subiendo trabajo y fotos...';
+  submitBtn.textContent = 'Guardando...';
 
   const plantaId = formData.get('planta_id');
 
@@ -1009,24 +1218,22 @@ async function handleCreateTrabajo(event) {
       body: formData
     });
     if (!res.ok) throw new Error('Error al guardar trabajo');
-    const result = await res.json();
 
     closeModal('modal-nuevo-trabajo');
     form.reset();
     submitBtn.disabled = false;
     submitBtn.textContent = 'Guardar Trabajo y Fotos';
 
-    alert('✅ ¡Trabajo de mantenimiento y fotografías registrados exitosamente!');
-    // Recargar la planta actual para ver el nuevo trabajo en el historial
-    openPlanta(plantaId);
+    showToast('✅ ¡Trabajo y fotos registrados en la base de datos!', 'success');
+    openPlanta(plantaId, false);
   } catch (err) {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Guardar Trabajo y Fotos';
-    alert('Error al registrar trabajo: ' + err.message);
+    showToast('Error: ' + err.message, 'danger');
   }
 }
 
-// 4. Submit Nuevo Caso de Campo
+// 4. Submit Caso de Campo
 async function handleCreateCase(event) {
   event.preventDefault();
   const form = event.target;
@@ -1042,14 +1249,14 @@ async function handleCreateCase(event) {
     if (!res.ok) throw new Error('Error al registrar caso');
     closeModal('modal-nuevo-caso');
     form.reset();
-    alert('✅ ¡Caso indexado con éxito! El Asistente IA ya aprendió esta solución para futuras consultas.');
+    showToast('✅ ¡Caso indexado! El Asistente IA ya aprendió esta solución.', 'success');
     fetchCases();
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'danger');
   }
 }
 
-// 5. Submit Nuevo Manual PDF
+// 5. Submit Manual PDF
 async function handleUploadManual(event) {
   event.preventDefault();
   const form = event.target;
@@ -1063,9 +1270,9 @@ async function handleUploadManual(event) {
     if (!res.ok) throw new Error('Error al subir manual');
     closeModal('modal-subir-manual');
     form.reset();
-    alert('✅ ¡Manual PDF subido e indexado en la base de datos!');
+    showToast('✅ ¡Manual PDF subido e indexado!', 'success');
     fetchManuals();
   } catch (err) {
-    alert('Error: ' + err.message);
+    showToast('Error: ' + err.message, 'danger');
   }
 }

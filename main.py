@@ -139,6 +139,16 @@ async def update_planta(planta_id: int, payload: dict):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.delete("/api/plantas/{planta_id}")
+async def delete_planta(planta_id: int):
+    try:
+        deleted = db_manager.delete_planta(planta_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Planta no encontrada")
+        return {"status": "success", "message": "Planta eliminada exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # =========================================================================
 # API TRABAJOS DE MANTENIMIENTO & FOTOS
 # =========================================================================

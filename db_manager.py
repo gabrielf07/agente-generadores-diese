@@ -789,6 +789,14 @@ def update_planta(planta_id: int, data: dict):
         cursor.execute(f"UPDATE plantas SET {', '.join(updates)} WHERE id = ?", vals)
         conn.commit()
 
+def delete_planta(planta_id: int) -> bool:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM trabajos_mantenimiento WHERE planta_id = ?", (planta_id,))
+        cursor.execute("DELETE FROM plantas WHERE id = ?", (planta_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
 def get_trabajos_by_planta(planta_id: int):
     with get_db_connection() as conn:
         cursor = conn.cursor()
