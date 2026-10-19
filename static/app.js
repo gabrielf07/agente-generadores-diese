@@ -424,8 +424,8 @@ function renderMotorSpecs(p) {
         <tr><th>Viscosidad Recomendada:</th><td>${p.motor_viscosidad_aceite || 'SAE 15W-40 CI-4/CK-4'}</td></tr>
         <tr><th>Capacidad de Refrigerante:</th><td>${p.motor_capacidad_refrigerante || 'N/D'}</td></tr>
         <tr><th>Tipo de Refrigerante:</th><td>${p.motor_tipo_refrigerante || '50/50 con aditivo DCA4'}</td></tr>
-        <tr><th>Filtro de Aceite Lubricante:</th><td><span class="tag-code" style="color: #86efac;">${p.motor_filtro_aceite || 'N/D'}</span></td></tr>
-        <tr><th>Filtro Combustible Primario (Separador):</th><td><span class="tag-code" style="color: #93c5fd;">${p.motor_filtro_combustible_primario || 'N/D'}</span></td></tr>
+        <tr><th>Filtro de Aceite Lubricante:</th><td><span class="tag-code" style="color: var(--success); background: var(--success-light); border-color: var(--success-border);">${p.motor_filtro_aceite || 'N/D'}</span></td></tr>
+        <tr><th>Filtro Combustible Primario (Separador):</th><td><span class="tag-code">${p.motor_filtro_combustible_primario || 'N/D'}</span></td></tr>
         <tr><th>Filtro Combustible Secundario:</th><td><span class="tag-code">${p.motor_filtro_combustible_secundario || 'N/D'}</span></td></tr>
         <tr><th>Filtro de Aire:</th><td><span class="tag-code">${p.motor_filtro_aire || 'N/D'}</span></td></tr>
         <tr><th>Filtro de Agua / Anticorrosivo:</th><td><span class="tag-code">${p.motor_filtro_agua_refrigerante || 'N/A'}</span></td></tr>
@@ -464,7 +464,7 @@ function renderGeneradorSpecs(p) {
         <h3>Regulador de Voltaje (AVR) & Excitación</h3>
       </div>
       <table class="spec-table">
-        <tr><th>Modelo de AVR:</th><td><span class="tag-code" style="color: #fde047;">${p.generador_modelo_avr || 'AS440 / SX460'}</span></td></tr>
+        <tr><th>Modelo de AVR:</th><td><span class="tag-code" style="color: var(--warning); background: var(--warning-light); border-color: var(--warning-border);">${p.generador_modelo_avr || 'AS440 / SX460'}</span></td></tr>
         <tr><th>Tipo de Excitación:</th><td>${p.generador_tipo_excitacion || 'Brushless (Sin escobillas)'}</td></tr>
         <tr><th>Clase de Aislamiento:</th><td>${p.generador_clase_aislamiento || 'Clase H / IP23'}</td></tr>
         <tr><th>Resistencias Anticondensación:</th><td>120V AC en reposo</td></tr>
@@ -485,9 +485,9 @@ function renderControladorSpecs(p) {
       </div>
       <table class="spec-table">
         <tr><th>Marca del Módulo:</th><td>${p.controlador_marca || 'Deep Sea Electronics'}</td></tr>
-        <tr><th>Modelo del Controlador:</th><td><span class="tag-code" style="color: #67e8f9;">${p.controlador_modelo || 'DSE 7320 MKII'}</span></td></tr>
+        <tr><th>Modelo del Controlador:</th><td><span class="tag-code">${p.controlador_modelo || 'DSE 7320 MKII'}</span></td></tr>
         <tr><th>Versión de Firmware:</th><td>${p.controlador_firmware || 'v3.2'}</td></tr>
-        <tr><th>Modo de Operación:</th><td><strong style="color: var(--accent-emerald);">${p.controlador_modo || 'Auto'}</strong></td></tr>
+        <tr><th>Modo de Operación:</th><td><strong style="color: var(--success);">${p.controlador_modo || 'Auto'}</strong></td></tr>
         <tr><th>Pick-up Magnético (MPU):</th><td>${p.controlador_pick_up_dientes || '126 dientes en cremallera'}</td></tr>
         <tr><th>Configuración I/O:</th><td>${p.controlador_config_io || 'Salida Marcha, Solenoide, Falla Red ATS'}</td></tr>
         <tr><th>Notas del Controlador:</th><td>${p.controlador_notas || 'Monitoreo remoto RS485 activo.'}</td></tr>
@@ -501,8 +501,8 @@ function renderControladorSpecs(p) {
         <h3>Parámetros de Disparo & Alarmas de Parada</h3>
       </div>
       <table class="spec-table">
-        <tr><th>Baja Presión de Aceite (Disparo):</th><td><span class="tag-code" style="color: #f87171;">${p.controlador_umbral_baja_presion_aceite || '18 PSI (1.2 bar)'}</span></td></tr>
-        <tr><th>Alta Temperatura Refrigerante:</th><td><span class="tag-code" style="color: #f87171;">${p.controlador_umbral_alta_temperatura || '102 °C (215 °F)'}</span></td></tr>
+        <tr><th>Baja Presión de Aceite (Disparo):</th><td><span class="tag-code" style="color: var(--danger); background: var(--danger-light); border-color: var(--danger-border);">${p.controlador_umbral_baja_presion_aceite || '18 PSI (1.2 bar)'}</span></td></tr>
+        <tr><th>Alta Temperatura Refrigerante:</th><td><span class="tag-code" style="color: var(--danger); background: var(--danger-light); border-color: var(--danger-border);">${p.controlador_umbral_alta_temperatura || '102 °C (215 °F)'}</span></td></tr>
         <tr><th>Sobrevelocidad de Motor:</th><td><span class="tag-code">${p.controlador_umbral_sobrevelocidad || '2070 RPM (69 Hz)'}</span></td></tr>
         <tr><th>Subvoltaje / Sobrevoltaje:</th><td>${p.controlador_umbral_subvoltaje || '-15%'} / ${p.controlador_umbral_sobrevoltaje || '+15%'}</td></tr>
         <tr><th>Tiempos de Transferencia:</th><td>Arranque en 1.5s, toma de carga en 8s</td></tr>
@@ -637,24 +637,24 @@ function renderCases(cases) {
         </div>
       </div>
 
-      <h4 style="color: #f87171; margin-top: 0.5rem;">⚠️ Síntoma: ${c.sintoma}</h4>
+      <h4 style="color: var(--danger); margin-top: 0.5rem;">⚠️ Síntoma: ${c.sintoma}</h4>
 
       ${c.descartes_previos ? `
-        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+        <p style="font-size: 0.88rem; color: var(--text-body); margin-bottom: 0.4rem;">
           <strong>🔍 Descartes Previos:</strong> ${c.descartes_previos}
         </p>
       ` : ''}
 
-      <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; padding: 0.6rem 0.85rem; border-radius: 4px; margin: 0.6rem 0; font-size: 0.88rem;">
-        <strong style="color: #fca5a5;">🎯 Causa Raíz Comprobada:</strong> ${c.causa_raiz}
+      <div style="background: var(--danger-light); border-left: 3px solid var(--danger); border-radius: 6px; padding: 0.65rem 0.85rem; margin: 0.6rem 0; font-size: 0.88rem; color: #991b1b;">
+        <strong>🎯 Causa Raíz Comprobada:</strong> ${c.causa_raiz}
       </div>
 
-      <div style="background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; padding: 0.6rem 0.85rem; border-radius: 4px; margin: 0.6rem 0; font-size: 0.88rem;">
-        <strong style="color: #86efac;">🛠️ Solución Aplicada:</strong> ${c.solucion}
+      <div style="background: var(--success-light); border-left: 3px solid var(--success); border-radius: 6px; padding: 0.65rem 0.85rem; margin: 0.6rem 0; font-size: 0.88rem; color: #065f46;">
+        <strong>🛠️ Solución Aplicada:</strong> ${c.solucion}
       </div>
 
       ${c.consejo_campo ? `
-        <p style="font-size: 0.85rem; color: #cbd5e1; margin-top: 0.5rem;">
+        <p style="font-size: 0.85rem; color: var(--text-body); margin-top: 0.5rem;">
           <strong>💡 Consejo Práctico:</strong> ${c.consejo_campo}
         </p>
       ` : ''}
@@ -727,15 +727,15 @@ function renderManuals(manuals) {
   container.innerHTML = manuals.map(m => `
     <div class="sede-card" style="cursor: default;">
       <div class="sede-card-header">
-        <div class="sede-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">📄</div>
+        <div class="sede-icon" style="background: var(--danger-light); color: var(--danger); border-color: var(--danger-border);">📄</div>
         <span class="badge-code">${m.categoria || 'PDF'}</span>
       </div>
       <h3>${m.titulo}</h3>
-      <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem;">
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
         Archivo: <code>${m.filename}</code> &nbsp;|&nbsp; Tamaño: ${m.tamano_mb || '1.5'} MB
       </p>
       <div class="sede-card-footer">
-        <span style="font-size: 0.8rem; color: var(--accent-emerald);">● Indexado en Base Vectorial</span>
+        <span style="font-size: 0.8rem; color: var(--success); font-weight: 600;">● Indexado en Base Vectorial</span>
         <button class="btn btn-secondary btn-sm" onclick="openChatForCurrentPlanta('Explícame los puntos clave del manual ${escapeQuotes(m.titulo)}')">
           Consultar
         </button>
