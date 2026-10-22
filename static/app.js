@@ -1277,6 +1277,8 @@ async function handleCreateTrabajo(event) {
     submitBtn.textContent = 'Guardar Trabajo y Fotos';
 
     showToast('✅ ¡Trabajo y fotos registrados en la base de datos!', 'success');
+    fetchStats();
+    fetchDashboardData();
     openPlanta(plantaId, false);
   } catch (err) {
     submitBtn.disabled = false;
@@ -1781,18 +1783,17 @@ function selectDashboardMonth(monthNum) {
 function populateDashboardSlicers(data) {
   // 1. Selector de Sedes
   const selectSede = document.getElementById('slicer-sede');
-  if (selectSede && selectSede.options.length <= 1) {
-    selectSede.innerHTML = `<option value="">Todas las Sedes</option>` +
-      data.available_sedes.map(s => `<option value="${s.id}">${s.icono || '🏢'} ${s.nombre}</option>`).join('');
-    if (state.dashboardFilters.sede_id) {
-      selectSede.value = state.dashboardFilters.sede_id;
-    }
+  if (selectSede && data.available_sedes) {
+    const currentVal = state.dashboardFilters.sede_id || '';
+    selectSede.innerHTML = `<option value="">Todas las Sedes (${data.available_sedes.length})</option>` +
+      data.available_sedes.map(s => `<option value="${s.id}" ${s.id === state.dashboardFilters.sede_id ? 'selected' : ''}>${s.icono || '🏢'} ${s.nombre}</option>`).join('');
+    if (currentVal) selectSede.value = currentVal;
   }
 
   // 2. Selector de Años
   const selectYear = document.getElementById('slicer-year');
   if (selectYear && data.available_years) {
-    const currentYearVal = selectYear.value;
+    const currentYearVal = selectYear.value || '2026';
     selectYear.innerHTML = data.available_years.map(y => `<option value="${y}" ${y === state.dashboardFilters.year ? 'selected' : ''}>${y} ${y === 2026 ? '(Período Actual)' : ''}</option>`).join('');
     if (currentYearVal) selectYear.value = currentYearVal;
   }
@@ -1944,6 +1945,7 @@ async function handleCreateTrabajoGlobal(event) {
     showToast('✅ Mantenimiento registrado y reflejado en el dashboard.', 'success');
     fetchDashboardData();
     fetchAllPlantas();
+    fetchStats();
   } catch (err) {
     if (btn) {
       btn.disabled = false;

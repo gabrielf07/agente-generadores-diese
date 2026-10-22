@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Application Stylesheet (Modo Claro & Minimalista) -->
-  <link rel="stylesheet" href="/static/style.css?v=2.1">
+  <link rel="stylesheet" href="/static/style.css?v=2.2">
 </head>
 <body>
 
@@ -1103,6 +1103,37 @@
               <input type="text" name="tecnico" class="form-control" placeholder="Ej: Gabriel F." required>
             </div>
           </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Presupuesto Proyectado ($):</label>
+              <input type="number" step="0.01" name="costo_proyectado" class="form-control" placeholder="Ej: 2500.00" required>
+            </div>
+            <div class="form-group">
+              <label>Costo Real Ejecutado ($):</label>
+              <input type="number" step="0.01" name="costo_real" class="form-control" placeholder="Ej: 2150.00" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Subsistema / Categoría de Falla:</label>
+              <select name="categoria_falla" class="form-control" required>
+                <option value="Lubricación y Filtros">Lubricación y Filtros</option>
+                <option value="Sistema de Combustible">Sistema de Combustible</option>
+                <option value="Sistema Eléctrico / AVR">Sistema Eléctrico / AVR</option>
+                <option value="Baterías y Arranque">Baterías y Arranque</option>
+                <option value="Refrigeración / Temperatura">Refrigeración / Temperatura</option>
+                <option value="Controlador y Sensores DSE">Controlador y Sensores DSE</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Estado del Servicio:</label>
+              <select name="estado_servicio" class="form-control" required>
+                <option value="Completado">Completado</option>
+                <option value="Pendiente de Repuesto">Pendiente de Repuesto</option>
+                <option value="En Observación">En Observación</option>
+              </select>
+            </div>
+          </div>
           <div class="form-group">
             <label>Título del Trabajo Realizado:</label>
             <input type="text" name="titulo" class="form-control" placeholder="Ej: Cambio de Aceite, Filtros y Calibración de AVR" required>
@@ -1356,6 +1387,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Application Logic -->
-  <script src="/static/app.js?v=2.1"></script>
+  <script src="/static/app.js?v=2.2"></script>
 </body>
 </html>

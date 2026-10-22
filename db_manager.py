@@ -1201,10 +1201,9 @@ def _ensure_rich_powerbi_data(conn):
     """)
 
     # 2. Sedes adicionales del SENIAT
+    # 2. Sede oficial SENIAT Los Ruices (4ta sede del sistema)
     sedes_extra = [
-        ("SENIAT-LG", "SENIAT - Aduana Principal Marítima de La Guaira", "La Guaira", "Av. Soublette, Puerto de La Guaira", "Ing. Roberto Silva", "+58 412-4455667", "Superintendente de Mantenimiento", "Sede estratégica marítima con alta exposición a salitre. Dos generadores dedicados a sistemas de rayos X y servidores fiscales.", "⚓"),
-        ("SENIAT-PC", "SENIAT - Aduana Principal de Puerto Cabello", "Puerto Cabello", "Zona Portuaria, Muelle 12, Terminal Especializado", "Ing. Marcos Rivas", "+58 414-8899001", "Jefe de Operaciones Técnicas", "Sede aduanera de carga de mayor volumen del país. Respaldo continuo 24/7.", "🚢"),
-        ("SENIAT-LR", "SENIAT - Gerencia Regional Tributos Internos Los Ruices", "Caracas", "Av. Francisco de Miranda, Edif. SENIAT Los Ruices", "Lic. Carmen Gómez", "+58 424-3322114", "Administradora de Sede", "Sede metropolitana de recaudación y fiscalización tributaria. Grupos en terraza y sótano.", "🏛️")
+        ("SENIAT-LR", "SENIAT - Los Ruices", "Caracas", "Av. Francisco de Miranda, Edif. SENIAT Los Ruices, Sucre", "Ing. Mantenimiento Regional Tributario", "+58 414-8899001", "Coordinador Eléctrico Regional", "Gerencia Regional de Tributos Internos de la Región Capital. Alto tráfico de servidores y oficinas administrativas.", "🏢")
     ]
 
     for cod, nom, ciu, dir_, c_nom, c_tel, c_car, nots, ico in sedes_extra:
@@ -1221,37 +1220,27 @@ def _ensure_rich_powerbi_data(conn):
     cursor.execute("SELECT id, codigo FROM sedes")
     sede_map = {r["codigo"]: r["id"] for r in cursor.fetchall()}
 
-    # 3. Plantas para las sedes nuevas
+    # 3. Plantas para las 4 sedes oficiales (GEN-MC-02, GEN-BK-02, GEN-LR-01, GEN-LR-02)
     plantas_extra = [
-        # La Guaira
-        ("SENIAT-LG", "GEN-LG-01", "Planta Principal Cummins KTA19 600 kVA - Aduana La Guaira", "Cummins Power Generation", 600.0, 480.0, "Sala Técnica Marítima - Muelle 5", 1680.0, "Operativa", "Crítica",
-         "Cummins", "KTA19-G4", "37184920", "6 cilindros en línea (18.9 L)", "Turboalimentado", 680.0, "Diésel #2", "Electrónico", "38 Litros", "15W-40 CI-4", "45 Litros", "50/50 ELC", "LF9009", "FS1000", "FF5612", "AF25544", "WF2071", "24V DC", "2x 12V 1100 CCA", "Tropicalizada ambiente salino",
-         "Stamford", "HCI534E", "0245678", 600.0, 480.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico (4 Hilos)", 0.8, 1665.0, "AS440", "Brushless", "Clase H / IP23", "Resistencia de caldeo",
-         "Deep Sea Electronics", "DSE 7320 MKII", "v3.2", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "126 dientes", "Control de transferencias ATS", "En red"),
-        
-        ("SENIAT-LG", "GEN-LG-02", "Planta Respaldo Caterpillar 3406C 350 kVA - Aduana La Guaira", "Caterpillar Inc.", 350.0, 280.0, "Patio de Rayos X y Contenedores", 2150.0, "En Mantenimiento", "Alta",
-         "Caterpillar", "3406C DITA", "4CK02914", "6 en línea (14.6 L)", "Turbo posenfriado", 420.0, "Diésel #2", "Gobernador Mecánico Hydra-Mechanical", "34 Litros", "Cat DEO 15W-40", "40 Litros", "Cat ELC", "1R-1808", "1R-0770", "1R-0749", "110-6326", "N/A", "24V DC", "2x Cat 1400 CCA", "En servicio de reemplazo de mangueras",
-         "Leroy Somer", "LSA 47.2", "LS-9912", 350.0, 280.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 971.0, "R450", "AREP", "Clase H", "Bobinado protegido contra corrosión marina",
-         "ComAp", "InteliLite 4 AMF 25", "v1.4", "Manual", "20 PSI", "104 °C", "2070 RPM", "180 V", "240 V", "113 dientes", "Configurado para arranque por contacto seco", "Inspección activa"),
+        # Mata de Coco Respaldo
+        ("SENIAT-MC", "GEN-MC-02", "Planta Respaldo Generac SD300 300 kVA - Sede Mata de Coco", "Generac Power Systems", 300.0, 240.0, "Caseta Auxiliar - Entrada Norte", 610.0, "Operativa", "Media",
+         "Iveco FPT", "Cursor 9", "FPT-993821", "6 en línea (8.7 L)", "Turbo Common Rail", 310.0, "Diésel #2", "Bosch EDC", "28 Litros", "15W-40 Urania", "26 Litros", "50/50 Glicol", "2992242", "504033400", "504033399", "C24024", "N/A", "24V DC", "2x 12V 900 CCA", "Arranque en menos de 10s ante corte",
+         "Mecc Alte", "ECO38-2LN/4", "MA-48291", 300.0, 240.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 832.0, "DSR Digital", "Brushless", "Clase H", "Regulador digital de alta precisión",
+         "Generac", "Power Zone Pro", "v3.1", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "142 dientes", "Conexión directa a transferencia automática", "Excelente estado"),
 
-        # Puerto Cabello
-        ("SENIAT-PC", "GEN-PC-01", "Planta Perkins 2506C 500 kVA - Aduana Puerto Cabello", "FG Wilson", 500.0, 400.0, "Sala Eléctrica Subestación Central", 1840.0, "Operativa", "Crítica",
-         "Perkins", "2506C-E15TAG2", "MGB150029", "6 en línea (15.0 L)", "Turbo y Postenfriado", 540.0, "Diésel #2", "ECM Perkins MEUI", "62 Litros", "15W-40 CI-4", "58 Litros", "Perkins Extended Life", "2654407", "26560201", "26561117", "26510342", "WF2075", "24V DC", "2x 12V 1000 CCA", "Operando en paralelo",
-         "Leroy Somer", "TAL 0473", "LS-88412", 500.0, 400.0, "480/277V Trifásico", "60 Hz", 1800, "Trifásico 4 Hilos", 0.8, 601.0, "R250", "Shunt", "Clase H", "Tensión industrial",
-         "Deep Sea Electronics", "DSE 7320", "v2.8", "Auto", "18 PSI", "102 °C", "2070 RPM", "415 V", "520 V", "136 dientes", "Vinculado a interruptor Abb Emax", "Excelente estado"),
-
-        ("SENIAT-PC", "GEN-PC-02", "Planta FG Wilson P400P5 400 kVA - Terminal Contenedores", "FG Wilson", 400.0, 320.0, "Patio Operativo Grúas Pórtico", 1220.0, "Operativa", "Alta",
-         "Perkins", "2206A-E13TAG3", "TGB130044", "6 en línea (12.5 L)", "Turboalimentado", 440.0, "Diésel #2", "Electrónico", "40 Litros", "15W-40", "42 Litros", "50/50 Glicol", "2654403", "26560143", "26560145", "26510214", "N/A", "24V DC", "2x 12V 950 CCA", "Caseta insonorizada IP55",
-         "Leroy Somer", "LL5014J", "LS-73192", 400.0, 320.0, "480/277V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 481.0, "R438", "PMG", "Clase H", "Excitatriz PMG",
-         "PowerWizard", "PW 2.1", "v1.1", "Auto", "20 PSI", "103 °C", "2070 RPM", "415 V", "520 V", "126 dientes", "Protección por sobrecarga activa", "En línea"),
+        # Búnker Respaldo N+1
+        ("SENIAT-BK", "GEN-BK-02", "Planta Centro de Datos Búnker #2 - MTU 1000 kVA", "Rolls-Royce MTU Solutions", 1000.0, 800.0, "Sala de Generación Blindada - Bahía B", 690.0, "Operativa", "Crítica",
+         "MTU", "16V2000DS1000", "MTU-5352001", "16 Cilindros en V (31.9 L)", "Turbo Intercooler Aire-Agua", 1280.0, "Diésel #2", "MTU ADEC", "110 Litros", "15W-40 MTU Type 2.1", "120 Litros", "MTU Corrosion Inhibitor", "XP5240", "MTU-Sep", "MTU-Fin", "C30810", "WF2075", "24V DC", "4x 12V 1400 CCA", "Configuración N+1 sincronismo instantáneo",
+         "Marathon Electric", "740RSL7086", "ME-991823", 1000.0, 800.0, "480/277V Trifásico", "60 Hz", 1800, "Trifásico 4 Hilos", 0.8, 1202.0, "DVR2000E+", "PMG", "Clase H", "Aislamiento VPI especial para centro de cómputo",
+         "Deep Sea Electronics", "DSE 8610 MKII", "v4.2", "Auto", "24 PSI", "101 °C", "2070 RPM", "415 V", "520 V", "160 dientes", "Sincronismo automático con GEN-BK-01", "Tier III"),
 
         # Los Ruices
-        ("SENIAT-LR", "GEN-LR-01", "Planta Kohler 250REOZJE 250 kVA - Sede Los Ruices", "Kohler Power Systems", 250.0, 200.0, "Terraza Nivel 4 - Caseta Acústica", 890.0, "Operativa", "Media",
-         "John Deere", "6090HF484", "RG6090L01928", "6 en línea (9.0 L)", "Turbocharged Charge Air Cooled", 315.0, "Diésel #2", "John Deere JDEC", "32 Litros", "John Deere Plus-50 II 15W-40", "36 Litros", "Cool-Gard II", "RE509672", "RE529643", "RE522878", "RE516335", "N/A", "12V DC", "1x 12V 1000 CCA", "Operativa para cargas administrativas",
-         "Kohler", "4UA13", "K-83729", 250.0, 200.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 694.0, "Decision-Maker 3000", "Digital", "Clase H", "Aislamiento superior",
+        ("SENIAT-LR", "GEN-LR-01", "Planta Kohler 250REOZJE 250 kVA - Sede Los Ruices", "Kohler Power Systems", 250.0, 200.0, "Patio Técnico Posterior - Caseta de Protección", 920.0, "Operativa", "Alta",
+         "John Deere", "6068HFG82", "PE6068H91283", "6 en línea (6.8 L)", "Turbo Aire-Aire Intercooled", 287.0, "Diésel #2", "John Deere ECU", "19 Litros", "John Deere Plus-50 II 15W-40", "27 Litros", "Cool-Gard II", "RE509672", "RE529643", "RE522878", "RE516335", "N/A", "12V DC", "1x 12V 1000 CCA", "Soporte de cajas y ventanillas tributarias",
+         "Kohler", "4UA13", "K-83729", 250.0, 200.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 694.0, "Decision-Maker 3000", "Digital", "Clase H", "Aislamiento superior tropical",
          "Kohler", "Decision-Maker 3000", "v2.0", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "129 dientes", "Comando a ATS Kohler MPAC", "Operativa"),
 
-        ("SENIAT-LR", "GEN-LR-02", "Planta Doosan DP158LC 500 kVA - Respaldo Servidores Los Ruices", "Doosan Infracore", 500.0, 400.0, "Sótano 1 - Sala de Transferencia", 1450.0, "Alerta", "Alta",
+        ("SENIAT-LR", "GEN-LR-02", "Planta Doosan DP158LC 500 kVA - Respaldo Servidores Los Ruices", "Doosan Infracore / Daewoo", 500.0, 400.0, "Sótano 1 - Sala de Transferencia y Conectividad", 1480.0, "Alerta", "Alta",
          "Doosan", "DP158LC", "DP158019482", "V8 Cilindros (14.6 L)", "Twin Turbo y Enfriador Aire-Aire", 530.0, "Diésel #2", "Bosch In-line Governor", "35 Litros", "15W-40 CI-4", "48 Litros", "50/50 Etilenglicol", "65.05510-5020", "65.12503-5011", "65.12503-5016", "474-00040", "N/A", "24V DC", "2x 12V 1000 CCA", "Alerta leve por desgaste en diodos de excitatriz",
          "Stamford", "HCI534C", "0294820", 500.0, 400.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 1388.0, "AS440", "Brushless", "Clase H", "Requiere calibración de voltaje",
          "Deep Sea Electronics", "DSE 7420", "v1.5", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "160 dientes", "Registro de fluctuación de voltaje reciente", "Revisión técnica programada")
