@@ -13,42 +13,48 @@
   <!-- Markdown parser: Marked.js -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- Chart.js for Power BI Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <!-- Application Stylesheet (Modo Claro & Minimalista) -->
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
   <!-- =========================================================================
-       TOP NAVIGATION BAR (MINIMALISTA)
+       TOP NAVIGATION BAR (ESTILO POWER BI / ENTERPRISE)
        ========================================================================= -->
   <header class="navbar">
-    <div class="nav-brand" onclick="navigateToHash('#/sedes')">
+    <div class="nav-brand" onclick="navigateToHash('#/dashboard')">
       <div class="brand-icon-wrapper">⚡</div>
       <div class="brand-titles">
         <h1>DIESELGEN</h1>
-        <span>Control Central Multi-Sede</span>
+        <span>Control Central Multi-Sede SENIAT</span>
       </div>
     </div>
 
     <!-- Live System Stats Counter -->
     <div class="nav-stats-bar">
-      <div class="stat-pill">
+      <div class="stat-pill" title="Sedes Operativas SENIAT">
         <span class="dot cyan"></span>
         <span>Sedes: <strong id="stat-sedes-count">0</strong></span>
       </div>
-      <div class="stat-pill">
+      <div class="stat-pill" title="Grupos Electrógenos en el Sistema">
         <span class="dot green"></span>
         <span>Plantas: <strong id="stat-plantas-count">0</strong></span>
       </div>
-      <div class="stat-pill">
+      <div class="stat-pill" title="Capacidad de Generación Total">
         <span>Capacidad: <strong id="stat-kva-count">0 kVA</strong></span>
       </div>
     </div>
 
     <!-- Actions & Views -->
     <div class="nav-actions">
+      <button class="btn btn-primary btn-sm" id="nav-btn-dashboard" onclick="navigateToHash('#/dashboard')">
+        📊 Dashboard
+      </button>
       <button class="btn btn-secondary btn-sm" id="nav-btn-sedes" onclick="navigateToHash('#/sedes')">
-        🏢 Sedes
+        🏢 Sedes & Plantas
       </button>
       <button class="btn btn-secondary btn-sm" id="nav-btn-cases" onclick="navigateToHash('#/cases')">
         📖 Bitácora
@@ -56,11 +62,11 @@
       <button class="btn btn-secondary btn-sm" id="nav-btn-manuals" onclick="navigateToHash('#/manuals')">
         📚 Manuales
       </button>
-      <button class="btn btn-primary btn-sm" onclick="openModal('modal-nueva-sede')">
-        ➕ Nueva Sede
+      <button class="btn btn-ai-sparkle btn-sm" onclick="toggleChatWidget()">
+        🤖 Asistente IA
       </button>
-      <button class="btn btn-success btn-sm" onclick="openModal('modal-nueva-planta')">
-        ➕ Nueva Planta
+      <button class="btn btn-success btn-sm" onclick="openGlobalTrabajoModal()">
+        ➕ Registrar Mantenimiento
       </button>
     </div>
   </header>
@@ -71,9 +77,336 @@
   <main class="app-container">
 
     <!-- =====================================================================
-         VISTA 1: SEDES HUB (DASHBOARD)
+         VISTA 0: DASHBOARD EJECUTIVO INTERACTIVO (ESTILO POWER BI SENIAT)
          ===================================================================== -->
-    <section id="view-sedes" class="view-section active">
+    <section id="view-dashboard" class="view-section active">
+      
+      <!-- Ribbon Superior de Control y Título -->
+      <div class="dashboard-header-ribbon">
+        <div class="ribbon-brand-group">
+          <div class="ribbon-icon">⚡📊</div>
+          <div class="ribbon-titles">
+            <h2>Mantenimiento Preventivo & Control de Fallas | SENIAT</h2>
+            <p>Monitoreo de Grupos Electrógenos, Costo por Equipo ($), Presupuesto Proyectado vs Real e Incidencias por Sede</p>
+          </div>
+        </div>
+        <div class="ribbon-actions">
+          <button class="btn btn-ai-sparkle" onclick="generateAIDiagnosis()">
+            ✨ Diagnóstico Inteligente con IA
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="fetchDashboardData()" title="Actualizar datos del dashboard">
+            🔄 Actualizar
+          </button>
+          <button class="btn btn-success btn-sm" onclick="openGlobalTrabajoModal()">
+            ➕ Registrar Trabajo
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjetas KPI Superiores (Estilo Power BI Ribbon) -->
+      <div class="dashboard-kpi-grid">
+        <!-- KPI 1: # Sedes -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label"># Cobertura Flota</span>
+            <span class="kpi-icon">🏢</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-total-sedes">6</span>
+            <span class="kpi-unit">Sedes</span>
+          </div>
+          <div class="kpi-footer-sub">SENIAT Nacional</div>
+        </div>
+
+        <!-- KPI 2: # Equipos -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label"># Grupos Electrógenos</span>
+            <span class="kpi-icon">⚡</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-total-plantas">10</span>
+            <span class="kpi-unit">Plantas</span>
+          </div>
+          <div class="kpi-footer-sub"><strong id="kpi-total-kva">4,850</strong> kVA Capacidad Total</div>
+        </div>
+
+        <!-- KPI 3: $ Diferencia (Ahorro/Variación) -->
+        <div class="dashboard-kpi-card highlight-card">
+          <div class="kpi-top">
+            <span class="kpi-label">$ Diferencia (Variación)</span>
+            <span class="kpi-icon">💰</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-diferencia">$12,780.00</span>
+          </div>
+          <div class="kpi-footer-sub">
+            <span class="kpi-badge badge-success" id="kpi-variacion-badge">↓ 16.3% Ahorro</span>
+          </div>
+        </div>
+
+        <!-- KPI 4: Costo Proyectado -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">$ Costo Proyectado</span>
+            <span class="kpi-icon">📋</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-costo-proyectado">$78,400.00</span>
+          </div>
+          <div class="kpi-footer-sub">Presupuesto Programado</div>
+        </div>
+
+        <!-- KPI 5: Costo Real -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">$ Costo Real Ejecutado</span>
+            <span class="kpi-icon">🏷️</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-costo-real">$65,620.00</span>
+          </div>
+          <div class="kpi-footer-sub">
+            <div class="kpi-mini-progress">
+              <div class="kpi-progress-bar" id="kpi-budget-progress" style="width: 83.7%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI 6: Disponibilidad Global -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">% Disponibilidad Global</span>
+            <span class="kpi-icon">🛡️</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-disponibilidad">80.0%</span>
+          </div>
+          <div class="kpi-footer-sub">
+            <span class="text-success" id="kpi-operativas-count">8 Operativas</span> • <span class="text-warning" id="kpi-alerta-count">2 Alerta</span>
+          </div>
+        </div>
+
+        <!-- KPI 7: Total Servicios -->
+        <div class="dashboard-kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label"># Servicios Ejecutados</span>
+            <span class="kpi-icon">🔧</span>
+          </div>
+          <div class="kpi-value-row">
+            <span class="kpi-main-number" id="kpi-total-servicios">33</span>
+          </div>
+          <div class="kpi-footer-sub">
+            <span id="kpi-preventivos-count">21</span> Prev / <span id="kpi-fallas-count">12</span> Fallas
+          </div>
+        </div>
+      </div>
+
+      <!-- Cuerpo del Dashboard: Barra Lateral de Filtros (Slicers) + Gráficos y Tablas -->
+      <div class="dashboard-body-layout">
+        
+        <!-- Panel Izquierdo: Slicers / Filtros Interactivos (Estilo Power BI) -->
+        <aside class="dashboard-slicers-panel">
+          <div class="slicers-header">
+            <h4><span class="slicer-icon">🔍</span> Filtros y Slicers</h4>
+            <button class="btn-link-reset" onclick="resetDashboardFilters()" title="Restablecer filtros a valores por defecto">Restablecer</button>
+          </div>
+
+          <!-- Slicer 1: Año -->
+          <div class="slicer-box">
+            <label class="slicer-label">📅 Año Fiscal:</label>
+            <select id="slicer-year" class="slicer-select" onchange="onDashboardFilterChange()">
+              <option value="2026" selected>2026 (Período Actual)</option>
+              <option value="2025">2025</option>
+            </select>
+          </div>
+
+          <!-- Slicer 2: Selector Interactivo de Meses (PILLS) -->
+          <div class="slicer-box">
+            <div class="slicer-title-flex">
+              <label class="slicer-label">🗓️ Mes del Período:</label>
+              <button class="month-pill-btn all-months-btn active" id="btn-month-all" onclick="selectDashboardMonth(null)">
+                Todo el Año
+              </button>
+            </div>
+            <div class="months-pill-grid">
+              <button class="month-pill-btn" data-month="1" onclick="selectDashboardMonth(1)">Ene</button>
+              <button class="month-pill-btn" data-month="2" onclick="selectDashboardMonth(2)">Feb</button>
+              <button class="month-pill-btn" data-month="3" onclick="selectDashboardMonth(3)">Mar</button>
+              <button class="month-pill-btn" data-month="4" onclick="selectDashboardMonth(4)">Abr</button>
+              <button class="month-pill-btn" data-month="5" onclick="selectDashboardMonth(5)">May</button>
+              <button class="month-pill-btn" data-month="6" onclick="selectDashboardMonth(6)">Jun</button>
+              <button class="month-pill-btn" data-month="7" onclick="selectDashboardMonth(7)">Jul</button>
+              <button class="month-pill-btn" data-month="8" onclick="selectDashboardMonth(8)">Ago</button>
+              <button class="month-pill-btn" data-month="9" onclick="selectDashboardMonth(9)">Sep</button>
+              <button class="month-pill-btn" data-month="10" onclick="selectDashboardMonth(10)">Oct</button>
+              <button class="month-pill-btn" data-month="11" onclick="selectDashboardMonth(11)">Nov</button>
+              <button class="month-pill-btn" data-month="12" onclick="selectDashboardMonth(12)">Dic</button>
+            </div>
+          </div>
+
+          <!-- Slicer 3: Sede del SENIAT -->
+          <div class="slicer-box">
+            <label class="slicer-label">🏢 Sede SENIAT:</label>
+            <select id="slicer-sede" class="slicer-select" onchange="onDashboardFilterChange()">
+              <option value="">Todas las Sedes</option>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <!-- Slicer 4: Tipo de Mantenimiento -->
+          <div class="slicer-box">
+            <label class="slicer-label">⚙️ Tipo de Servicio:</label>
+            <select id="slicer-tipo" class="slicer-select" onchange="onDashboardFilterChange()">
+              <option value="Todos">Todos los Servicios</option>
+              <option value="Mantenimiento Preventivo">Mantenimiento Preventivo</option>
+              <option value="Mantenimiento Correctivo">Correctivo / Fallas</option>
+              <option value="Calibración y Pruebas">Calibración y Pruebas</option>
+            </select>
+          </div>
+
+          <!-- Slicer 5: Subsistema / Causa de Falla -->
+          <div class="slicer-box">
+            <label class="slicer-label">🔧 Subsistema / Falla:</label>
+            <select id="slicer-categoria" class="slicer-select" onchange="onDashboardFilterChange()">
+              <option value="Todas">Todos los Subsistemas</option>
+              <option value="Lubricación y Filtros">Lubricación y Filtros</option>
+              <option value="Sistema de Combustible">Sistema de Combustible</option>
+              <option value="Sistema Eléctrico / AVR">Sistema Eléctrico / AVR</option>
+              <option value="Baterías y Arranque">Baterías y Arranque</option>
+              <option value="Refrigeración / Temperatura">Refrigeración / Temperatura</option>
+              <option value="Controlador y Sensores DSE">Controlador y Sensores DSE</option>
+            </select>
+          </div>
+
+          <!-- Estado de Filtro Activo -->
+          <div class="slicer-active-indicator">
+            <span class="dot green"></span>
+            <span>Vista: <strong id="filter-active-summary">Año Completo 2026</strong></span>
+          </div>
+
+          <!-- Botón Directo para el Asistente IA -->
+          <div class="slicer-agent-card">
+            <div class="agent-card-icon">🤖</div>
+            <div class="agent-card-text">
+              <h5>¿Dudas sobre estos datos?</h5>
+              <p>El agente IA conoce el historial de cada planta, tolerancias y manuales técnicos.</p>
+              <button class="btn btn-primary btn-sm btn-block" onclick="openChatWithContext('¿Cuál es el estado general de las plantas en el período actual y qué fallas son las más críticas?')">
+                Consultar al Agente IA
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Canvas Principal de Gráficos y Tablas -->
+        <div class="dashboard-canvas">
+
+          <!-- Gráfico Superior Principal: $ Costos Proyectado VS Real y Volumen de Servicios -->
+          <div class="dashboard-chart-card full-width">
+            <div class="chart-header">
+              <div class="chart-title-group">
+                <h3>📈 Costos de Mantenimiento Proyectado VS Real y Volumen de Servicios</h3>
+                <p>Evolución mensual del presupuesto planificado ($) vs gasto real ($) y cantidad de intervenciones ejecutadas</p>
+              </div>
+              <div class="chart-legend-custom">
+                <span class="legend-item"><span class="legend-color bar-color"></span> Servicios</span>
+                <span class="legend-item"><span class="legend-color line-proy"></span> Costo Proyectado ($)</span>
+                <span class="legend-item"><span class="legend-color line-real"></span> Costo Real ($)</span>
+              </div>
+            </div>
+            <div class="chart-body-canvas" style="position: relative; height: 320px;">
+              <canvas id="chart-costos-tendencia"></canvas>
+            </div>
+          </div>
+
+          <!-- Fila de Gráficos Secundarios: Sedes con más Fallas & Distribución por Subsistema -->
+          <div class="dashboard-charts-split">
+            
+            <!-- Gráfico Izquierdo: Sedes con más fallas e intervenciones -->
+            <div class="dashboard-chart-card half-width">
+              <div class="chart-header">
+                <div class="chart-title-group">
+                  <h3>🏢 Sedes del SENIAT con Mayor Frecuencia de Fallas e Intervenciones</h3>
+                  <p>Ranking de dependencias por incidencias atendidas y costo total de reparación</p>
+                </div>
+              </div>
+              <div class="chart-body-canvas" style="position: relative; height: 280px;">
+                <canvas id="chart-sedes-ranking"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico Derecho: Distribución por Subsistema / Tipo de Falla -->
+            <div class="dashboard-chart-card half-width">
+              <div class="chart-header">
+                <div class="chart-title-group">
+                  <h3>⚙️ Distribución de Fallas por Subsistema del Grupo Electrógeno</h3>
+                  <p>Componentes críticos con mayor demanda de intervención técnica y repuestos</p>
+                </div>
+              </div>
+              <div class="chart-body-canvas" style="position: relative; height: 280px;">
+                <canvas id="chart-fallas-categoria"></canvas>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Fila Inferior: Tabla Detallada Interactiva estilo Power BI -->
+          <div class="dashboard-chart-card full-width">
+            <div class="chart-header">
+              <div class="chart-title-group">
+                <h3>📋 Detalle de Servicios, Mantenimientos y Fallas</h3>
+                <p>Registro histórico detallado con variación presupuestaria ($), horas de uso y acceso a la ficha de la máquina</p>
+              </div>
+              <div class="table-search-box">
+                <input type="text" id="dashboard-table-search" class="form-control form-control-sm" placeholder="🔍 Filtrar por código, sede, técnico o causa..." oninput="filterDashboardTable()">
+              </div>
+            </div>
+
+            <div class="table-responsive-wrapper">
+              <table class="powerbi-table" id="dashboard-data-table">
+                <thead>
+                  <tr>
+                    <th>Código Equipo</th>
+                    <th>Sede SENIAT</th>
+                    <th>Tipo de Servicio</th>
+                    <th>Subsistema / Falla</th>
+                    <th>Fecha</th>
+                    <th>Horómetro</th>
+                    <th>Técnico</th>
+                    <th class="text-right">Costo Proyectado</th>
+                    <th class="text-right">Costo Real</th>
+                    <th class="text-right">$ Diferencia</th>
+                    <th class="text-center">Variación</th>
+                    <th>Estado</th>
+                    <th class="text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-table-tbody">
+                  <!-- Rendered dynamically by app.js -->
+                </tbody>
+                <tfoot>
+                  <tr class="table-totals-row">
+                    <td colspan="7"><strong>TOTALES CONSOLIDADOS DEL PERÍODO</strong></td>
+                    <td class="text-right" id="table-total-proyectado"><strong>$0.00</strong></td>
+                    <td class="text-right" id="table-total-real"><strong>$0.00</strong></td>
+                    <td class="text-right" id="table-total-diferencia"><strong>$0.00</strong></td>
+                    <td class="text-center" id="table-total-variacion"><span class="badge-success">0%</span></td>
+                    <td colspan="2" id="table-total-count">0 servicios</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- =====================================================================
+         VISTA 1: SEDES HUB (GRID DE SEDES Y PLANTAS)
+         ===================================================================== -->
+    <section id="view-sedes" class="view-section">
       <div class="section-header">
         <div class="section-title-group">
           <h2>Sedes de Generación</h2>
@@ -879,6 +1212,132 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="closeModal('modal-subir-manual')">Cancelar</button>
           <button type="submit" class="btn btn-primary">Subir Manual</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: INFORME EJECUTIVO INTELIGENTE CON IA -->
+  <div class="modal-backdrop" id="modal-ai-diagnosis">
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.4rem;">✨🤖</span>
+          <div>
+            <h3 style="margin: 0;">Diagnóstico Inteligente del Agente IA</h3>
+            <small style="color: var(--text-muted);" id="ai-diagnosis-subtitle">Informe Ejecutivo de Mantenimiento SENIAT</small>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-ai-diagnosis')">×</button>
+      </div>
+      <div class="modal-body" style="max-height: 65vh; overflow-y: auto;">
+        <div id="ai-diagnosis-loading" style="text-align: center; padding: 2.5rem 1rem;">
+          <div class="spinner-pulse" style="font-size: 2.5rem; margin-bottom: 1rem;">⚡🧠</div>
+          <h4>El Asistente Experto está analizando los datos del período...</h4>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Evaluando desviaciones presupuestarias, recurrencia de fallas en aduanas y centros de datos del SENIAT...</p>
+        </div>
+        <div id="ai-diagnosis-content" class="markdown-body" style="display: none;">
+          <!-- Content rendered dynamically with marked.js -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-ai-diagnosis')">Cerrar</button>
+        <button type="button" class="btn btn-primary" onclick="openChatWithContext('Explícame con más detalle las recomendaciones del informe de diagnóstico de este período')">💬 Continuar en el Chat con el Agente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRAR MANTENIMIENTO GLOBAL (DESDE EL DASHBOARD) -->
+  <div class="modal-backdrop" id="modal-nuevo-trabajo-global">
+    <div class="modal-content" style="max-width: 750px;">
+      <div class="modal-header">
+        <h3>➕ Registrar Trabajo de Mantenimiento</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-nuevo-trabajo-global')">×</button>
+      </div>
+      <form id="form-nuevo-trabajo-global" onsubmit="handleCreateTrabajoGlobal(event)">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Seleccionar Planta / Grupo Electrógeno:</label>
+              <select name="planta_id" id="global-trabajo-planta-select" class="form-control" required onchange="onGlobalTrabajoPlantaChanged()">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Fecha de Intervención:</label>
+              <input type="date" name="fecha" id="global-trabajo-fecha" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Tipo de Mantenimiento:</label>
+              <select name="tipo_trabajo" class="form-control" required>
+                <option value="Mantenimiento Preventivo A (250h)">Mantenimiento Preventivo A (250h)</option>
+                <option value="Mantenimiento Preventivo B (500h)">Mantenimiento Preventivo B (500h)</option>
+                <option value="Mantenimiento Mayor (1000h)">Mantenimiento Mayor (1000h / Anual)</option>
+                <option value="Mantenimiento Correctivo / Falla">Mantenimiento Correctivo / Falla</option>
+                <option value="Calibración y Pruebas Eléctricas">Calibración y Pruebas Eléctricas</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Subsistema / Categoría:</label>
+              <select name="categoria_falla" class="form-control" required>
+                <option value="Lubricación y Filtros">Lubricación y Filtros</option>
+                <option value="Sistema de Combustible">Sistema de Combustible</option>
+                <option value="Sistema Eléctrico / AVR">Sistema Eléctrico / AVR</option>
+                <option value="Baterías y Arranque">Baterías y Arranque</option>
+                <option value="Refrigeración / Temperatura">Refrigeración / Temperatura</option>
+                <option value="Controlador y Sensores DSE">Controlador y Sensores DSE</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Presupuesto Proyectado ($):</label>
+              <input type="number" step="0.01" name="costo_proyectado" class="form-control" placeholder="Ej: 2500.00" required>
+            </div>
+            <div class="form-group">
+              <label>Costo Real Ejecutado ($):</label>
+              <input type="number" step="0.01" name="costo_real" class="form-control" placeholder="Ej: 2150.00" required>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Horómetro en el Servicio:</label>
+              <input type="number" step="0.1" name="horas_horometro" id="global-trabajo-horas" class="form-control" placeholder="Ej: 1450.0" required>
+            </div>
+            <div class="form-group">
+              <label>Técnico Responsable:</label>
+              <input type="text" name="tecnico" class="form-control" placeholder="Ej: Gabriel F." required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Título del Servicio Realizado:</label>
+            <input type="text" name="titulo" class="form-control" placeholder="Ej: Mantenimiento Preventivo 250h y Purga de Combustible" required>
+          </div>
+
+          <div class="form-group">
+            <label>Descripción del Trabajo:</label>
+            <textarea name="descripcion" class="form-control" rows="3" placeholder="Detalla los hallazgos y procedimientos realizados..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Repuestos e Insumos:</label>
+            <input type="text" name="repuestos_utilizados" class="form-control" placeholder="Ej: Filtros LF9009, FS1000, 7 galones aceite 15W-40">
+          </div>
+
+          <div class="form-group">
+            <label>📸 Fotografías de Campo:</label>
+            <input type="file" name="fotos" class="form-control" multiple accept="image/*">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuevo-trabajo-global')">Cancelar</button>
+          <button type="submit" class="btn btn-success" id="btn-submit-trabajo-global">Guardar y Actualizar Dashboard</button>
         </div>
       </form>
     </div>

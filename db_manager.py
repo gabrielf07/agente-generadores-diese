@@ -157,12 +157,27 @@ def init_database():
             )
         """)
 
+        # Migración dinámica de columnas para dashboard ejecutivo en trabajos_mantenimiento
+        cursor.execute("PRAGMA table_info(trabajos_mantenimiento)")
+        existing_cols = [r["name"] for r in cursor.fetchall()]
+        if "costo_proyectado" not in existing_cols:
+            cursor.execute("ALTER TABLE trabajos_mantenimiento ADD COLUMN costo_proyectado REAL DEFAULT 0.0")
+        if "costo_real" not in existing_cols:
+            cursor.execute("ALTER TABLE trabajos_mantenimiento ADD COLUMN costo_real REAL DEFAULT 0.0")
+        if "categoria_falla" not in existing_cols:
+            cursor.execute("ALTER TABLE trabajos_mantenimiento ADD COLUMN categoria_falla TEXT DEFAULT 'Lubricación y Filtros'")
+        if "estado_servicio" not in existing_cols:
+            cursor.execute("ALTER TABLE trabajos_mantenimiento ADD COLUMN estado_servicio TEXT DEFAULT 'Completado'")
+
         conn.commit()
 
         # Sembrar Sedes iniciales si está vacío
         cursor.execute("SELECT COUNT(*) as cnt FROM sedes")
         if cursor.fetchone()["cnt"] == 0:
             _seed_initial_data(conn)
+
+        # Asegurar enriquecimiento de sedes, plantas e histórico 2026 para el Dashboard
+        _ensure_rich_powerbi_data(conn)
 
 def _seed_initial_data(conn):
     """Inserta las sedes de SENIAT, plantas con fichas completas y mantenimientos con fotos."""
@@ -828,19 +843,24 @@ def create_trabajo(data: dict) -> int:
         cursor.execute("""
             INSERT INTO trabajos_mantenimiento (
                 planta_id, fecha, tipo_trabajo, horas_horometro, tecnico,
-                titulo, descripcion, repuestos_utilizados, observaciones, fotos_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                titulo, descripcion, repuestos_utilizados, observaciones, fotos_json,
+                costo_proyectado, costo_real, categoria_falla, estado_servicio
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("planta_id"),
             data.get("fecha") or datetime.now().strftime("%Y-%m-%d"),
             data.get("tipo_trabajo", "Mantenimiento Preventivo"),
-            data.get("horas_horometro", 0.0),
+            float(data.get("horas_horometro", 0.0) or 0.0),
             data.get("tecnico", "Personal Técnico"),
             data.get("titulo", "Servicio Técnico"),
             data.get("descripcion", ""),
             data.get("repuestos_utilizados", ""),
             data.get("observaciones", ""),
-            fotos_json
+            fotos_json,
+            float(data.get("costo_proyectado", 0.0) or 0.0),
+            float(data.get("costo_real", 0.0) or 0.0),
+            data.get("categoria_falla", "Lubricación y Filtros"),
+            data.get("estado_servicio", "Completado")
         ))
         trabajo_id = cursor.lastrowid
 
@@ -892,5 +912,639 @@ def get_system_stats():
             "total_casos": total_casos
         }
 
+def get_dashboard_analytics(year=None, month=None, sede_id=None, tipo_trabajo=None, categoria=None):
+    """
+    Retorna métricas ejecutivas estilo Power BI para el Dashboard Principal:
+    KPIs consolidados, evolución mensual proyectado vs real, ranking de sedes con más fallas,
+    distribución por subsistema y detalle tabular interactivo con variaciones.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        # Años disponibles
+        cursor.execute("SELECT DISTINCT CAST(strftime('%Y', fecha) AS INTEGER) as y FROM trabajos_mantenimiento WHERE fecha IS NOT NULL ORDER BY y DESC")
+        available_years = [r["y"] for r in cursor.fetchall() if r["y"]]
+        if not available_years:
+            available_years = [2026]
+
+        cursor.execute("SELECT id, codigo, nombre, icono FROM sedes ORDER BY id ASC")
+        available_sedes = [dict(r) for r in cursor.fetchall()]
+
+        available_tipos = [
+            "Todos",
+            "Mantenimiento Preventivo",
+            "Mantenimiento Correctivo",
+            "Calibración y Pruebas"
+        ]
+
+        available_categorias = [
+            "Todas",
+            "Lubricación y Filtros",
+            "Sistema de Combustible",
+            "Sistema Eléctrico / AVR",
+            "Baterías y Arranque",
+            "Refrigeración / Temperatura",
+            "Controlador y Sensores DSE"
+        ]
+
+        months_names = [
+            {"num": 1, "short": "Ene", "name": "Enero"},
+            {"num": 2, "short": "Feb", "name": "Febrero"},
+            {"num": 3, "short": "Mar", "name": "Marzo"},
+            {"num": 4, "short": "Abr", "name": "Abril"},
+            {"num": 5, "short": "May", "name": "Mayo"},
+            {"num": 6, "short": "Jun", "name": "Junio"},
+            {"num": 7, "short": "Jul", "name": "Julio"},
+            {"num": 8, "short": "Ago", "name": "Agosto"},
+            {"num": 9, "short": "Sep", "name": "Septiembre"},
+            {"num": 10, "short": "Oct", "name": "Octubre"},
+            {"num": 11, "short": "Nov", "name": "Noviembre"},
+            {"num": 12, "short": "Dic", "name": "Diciembre"}
+        ]
+
+        # Año objetivo: por defecto el más reciente (2026) si no se especifica
+        target_year = int(year) if year else 2026
+
+        # Construir filtros para la consulta detallada
+        where_clauses = ["strftime('%Y', t.fecha) = ?"]
+        params = [str(target_year)]
+
+        if month is not None and int(month) > 0:
+            where_clauses.append("CAST(strftime('%m', t.fecha) AS INTEGER) = ?")
+            params.append(int(month))
+
+        if sede_id is not None and int(sede_id) > 0:
+            where_clauses.append("p.sede_id = ?")
+            params.append(int(sede_id))
+
+        if tipo_trabajo and tipo_trabajo != "Todos":
+            where_clauses.append("t.tipo_trabajo LIKE ?")
+            params.append(f"%{tipo_trabajo}%")
+
+        if categoria and categoria != "Todas":
+            where_clauses.append("t.categoria_falla = ?")
+            params.append(categoria)
+
+        where_sql = " AND ".join(where_clauses)
+
+        query_jobs = f"""
+            SELECT 
+                t.*,
+                p.codigo as planta_codigo,
+                p.nombre as planta_nombre,
+                p.capacidad_kva as planta_kva,
+                p.estado as planta_estado,
+                s.id as sede_id,
+                s.codigo as sede_codigo,
+                s.nombre as sede_nombre,
+                s.icono as sede_icono
+            FROM trabajos_mantenimiento t
+            JOIN plantas p ON p.id = t.planta_id
+            JOIN sedes s ON s.id = p.sede_id
+            WHERE {where_sql}
+            ORDER BY t.fecha DESC, t.id DESC
+        """
+        cursor.execute(query_jobs, params)
+        matched_jobs = []
+        for r in cursor.fetchall():
+            item = dict(r)
+            c_proy = float(item.get("costo_proyectado") or 0.0)
+            c_real = float(item.get("costo_real") or 0.0)
+            diff = c_proy - c_real
+            item["diferencia"] = round(diff, 2)
+            item["variacion_pct"] = round((diff / c_proy * 100), 1) if c_proy > 0 else 0.0
+            try:
+                item["fotos"] = json.loads(item.get("fotos_json") or "[]")
+            except Exception:
+                item["fotos"] = []
+            matched_jobs.append(item)
+
+        # Flota general
+        if sede_id and int(sede_id) > 0:
+            cursor.execute("SELECT COUNT(*) as cnt, SUM(capacidad_kva) as kva FROM plantas WHERE sede_id = ?", (int(sede_id),))
+            p_row = cursor.fetchone()
+            total_plantas = p_row["cnt"] or 0
+            total_kva = p_row["kva"] or 0
+            cursor.execute("SELECT COUNT(*) as cnt FROM plantas WHERE sede_id = ? AND estado = 'Operativa'", (int(sede_id),))
+            plantas_operativas = cursor.fetchone()["cnt"] or 0
+            total_sedes_active = 1
+        else:
+            cursor.execute("SELECT COUNT(*) as cnt FROM sedes")
+            total_sedes_active = cursor.fetchone()["cnt"] or 0
+            cursor.execute("SELECT COUNT(*) as cnt, SUM(capacidad_kva) as kva FROM plantas")
+            p_row = cursor.fetchone()
+            total_plantas = p_row["cnt"] or 0
+            total_kva = p_row["kva"] or 0
+            cursor.execute("SELECT COUNT(*) as cnt FROM plantas WHERE estado = 'Operativa'")
+            plantas_operativas = cursor.fetchone()["cnt"] or 0
+
+        disponibilidad_pct = round((plantas_operativas / total_plantas * 100), 1) if total_plantas > 0 else 100.0
+        plantas_alerta = total_plantas - plantas_operativas
+
+        # Totales calculados a partir de los trabajos filtrados
+        total_servicios = len(matched_jobs)
+        sum_proyectado = sum(float(j.get("costo_proyectado") or 0.0) for j in matched_jobs)
+        sum_real = sum(float(j.get("costo_real") or 0.0) for j in matched_jobs)
+        sum_diferencia = sum_proyectado - sum_real
+
+        total_fallas = sum(1 for j in matched_jobs if "Correctivo" in (j.get("tipo_trabajo") or "") or "Falla" in (j.get("tipo_trabajo") or "") or "Falla" in (j.get("titulo") or ""))
+        total_preventivos = total_servicios - total_fallas
+
+        kpis = {
+            "total_sedes": total_sedes_active,
+            "total_plantas": total_plantas,
+            "total_kva": round(total_kva, 1),
+            "total_servicios": total_servicios,
+            "total_fallas": total_fallas,
+            "total_preventivos": total_preventivos,
+            "costo_proyectado": round(sum_proyectado, 2),
+            "costo_real": round(sum_real, 2),
+            "diferencia": round(sum_diferencia, 2),
+            "variacion_pct": round((sum_diferencia / sum_proyectado * 100), 1) if sum_proyectado > 0 else 0.0,
+            "disponibilidad_pct": disponibilidad_pct,
+            "plantas_operativas": plantas_operativas,
+            "plantas_alerta": plantas_alerta
+        }
+
+        # Tendencia Mensual (12 Meses)
+        trend_clauses = ["strftime('%Y', t.fecha) = ?"]
+        trend_params = [str(target_year)]
+        if sede_id and int(sede_id) > 0:
+            trend_clauses.append("p.sede_id = ?")
+            trend_params.append(int(sede_id))
+        if tipo_trabajo and tipo_trabajo != "Todos":
+            trend_clauses.append("t.tipo_trabajo LIKE ?")
+            trend_params.append(f"%{tipo_trabajo}%")
+        if categoria and categoria != "Todas":
+            trend_clauses.append("t.categoria_falla = ?")
+            trend_params.append(categoria)
+
+        trend_where = " AND ".join(trend_clauses)
+        trend_query = f"""
+            SELECT 
+                CAST(strftime('%m', t.fecha) AS INTEGER) as mes,
+                COUNT(*) as servicios,
+                COALESCE(SUM(t.costo_proyectado), 0) as costo_proyectado,
+                COALESCE(SUM(t.costo_real), 0) as costo_real,
+                SUM(CASE WHEN t.tipo_trabajo LIKE '%Correctivo%' OR t.tipo_trabajo LIKE '%Falla%' OR t.titulo LIKE '%Falla%' THEN 1 ELSE 0 END) as fallas
+            FROM trabajos_mantenimiento t
+            JOIN plantas p ON p.id = t.planta_id
+            WHERE {trend_where}
+            GROUP BY mes
+            ORDER BY mes ASC
+        """
+        cursor.execute(trend_query, trend_params)
+        trend_by_month = {r["mes"]: dict(r) for r in cursor.fetchall()}
+
+        trend_monthly = []
+        for m in months_names:
+            num = m["num"]
+            data_m = trend_by_month.get(num, {"servicios": 0, "costo_proyectado": 0.0, "costo_real": 0.0, "fallas": 0})
+            c_proy = float(data_m.get("costo_proyectado") or 0.0)
+            c_real = float(data_m.get("costo_real") or 0.0)
+            trend_monthly.append({
+                "mes": num,
+                "short": m["short"],
+                "name": m["name"],
+                "servicios": data_m.get("servicios", 0),
+                "fallas": data_m.get("fallas", 0),
+                "preventivos": data_m.get("servicios", 0) - data_m.get("fallas", 0),
+                "costo_proyectado": round(c_proy, 2),
+                "costo_real": round(c_real, 2),
+                "diferencia": round(c_proy - c_real, 2),
+                "is_selected": (month == num)
+            })
+
+        # Ranking de Sedes del SENIAT con más intervenciones y fallas
+        sedes_breakdown = []
+        for s in available_sedes:
+            s_jobs = [j for j in matched_jobs if j["sede_id"] == s["id"]]
+            s_fallas = sum(1 for j in s_jobs if "Correctivo" in (j.get("tipo_trabajo") or "") or "Falla" in (j.get("tipo_trabajo") or "") or "Falla" in (j.get("titulo") or ""))
+            s_real = sum(float(j.get("costo_real") or 0.0) for j in s_jobs)
+            s_proy = sum(float(j.get("costo_proyectado") or 0.0) for j in s_jobs)
+            sedes_breakdown.append({
+                "sede_id": s["id"],
+                "codigo": s["codigo"],
+                "nombre": s["nombre"],
+                "icono": s.get("icono", "🏢"),
+                "total_servicios": len(s_jobs),
+                "total_fallas": s_fallas,
+                "total_preventivos": len(s_jobs) - s_fallas,
+                "costo_real": round(s_real, 2),
+                "costo_proyectado": round(s_proy, 2),
+                "diferencia": round(s_proy - s_real, 2)
+            })
+        sedes_breakdown.sort(key=lambda x: (x["total_servicios"], x["total_fallas"]), reverse=True)
+
+        # Distribución de fallas por categoría / subsistema
+        cat_counts = {c: {"count": 0, "costo": 0.0} for c in available_categorias if c != "Todas"}
+        for j in matched_jobs:
+            c = j.get("categoria_falla") or "Lubricación y Filtros"
+            if c not in cat_counts:
+                cat_counts[c] = {"count": 0, "costo": 0.0}
+            cat_counts[c]["count"] += 1
+            cat_counts[c]["costo"] += float(j.get("costo_real") or 0.0)
+
+        fallas_por_categoria = []
+        for cat_name, val in cat_counts.items():
+            fallas_por_categoria.append({
+                "categoria": cat_name,
+                "cantidad": val["count"],
+                "costo": round(val["costo"], 2),
+                "porcentaje": round((val["count"] / total_servicios * 100), 1) if total_servicios > 0 else 0.0
+            })
+        fallas_por_categoria.sort(key=lambda x: x["cantidad"], reverse=True)
+
+        return {
+            "status": "success",
+            "filter_applied": {
+                "year": target_year,
+                "month": int(month) if month else None,
+                "sede_id": int(sede_id) if sede_id else None,
+                "tipo_trabajo": tipo_trabajo or "Todos",
+                "categoria": categoria or "Todas"
+            },
+            "available_years": available_years,
+            "available_months": months_names,
+            "available_sedes": available_sedes,
+            "available_tipos": available_tipos,
+            "available_categorias": available_categorias,
+            "kpis": kpis,
+            "trend_monthly": trend_monthly,
+            "sedes_ranking": sedes_breakdown,
+            "fallas_por_categoria": fallas_por_categoria,
+            "servicios_detalle": matched_jobs
+        }
+
+def _ensure_rich_powerbi_data(conn):
+    """
+    Asegura que la base de datos contenga un ecosistema multi-sede completo del SENIAT
+    y un historial distribuido en todos los meses de 2026 para alimentar el Dashboard estilo Power BI.
+    """
+    cursor = conn.cursor()
+
+    # 1. Actualizar registros existentes para que tengan costos y categorías realistas
+    cursor.execute("""
+        UPDATE trabajos_mantenimiento 
+        SET costo_proyectado = 2800.0, costo_real = 2450.0, categoria_falla = 'Lubricación y Filtros', estado_servicio = 'Completado' 
+        WHERE id = 1 AND (costo_proyectado IS NULL OR costo_proyectado = 0.0)
+    """)
+    cursor.execute("""
+        UPDATE trabajos_mantenimiento 
+        SET costo_proyectado = 1900.0, costo_real = 1450.0, categoria_falla = 'Sistema Eléctrico / AVR', estado_servicio = 'Completado' 
+        WHERE id = 2 AND (costo_proyectado IS NULL OR costo_proyectado = 0.0)
+    """)
+    cursor.execute("""
+        UPDATE trabajos_mantenimiento 
+        SET costo_proyectado = 1500.0, costo_real = 1100.0, categoria_falla = 'Controlador y Sensores DSE', estado_servicio = 'Completado' 
+        WHERE id = 3 AND (costo_proyectado IS NULL OR costo_proyectado = 0.0)
+    """)
+
+    # 2. Sedes adicionales del SENIAT
+    sedes_extra = [
+        ("SENIAT-LG", "SENIAT - Aduana Principal Marítima de La Guaira", "La Guaira", "Av. Soublette, Puerto de La Guaira", "Ing. Roberto Silva", "+58 412-4455667", "Superintendente de Mantenimiento", "Sede estratégica marítima con alta exposición a salitre. Dos generadores dedicados a sistemas de rayos X y servidores fiscales.", "⚓"),
+        ("SENIAT-PC", "SENIAT - Aduana Principal de Puerto Cabello", "Puerto Cabello", "Zona Portuaria, Muelle 12, Terminal Especializado", "Ing. Marcos Rivas", "+58 414-8899001", "Jefe de Operaciones Técnicas", "Sede aduanera de carga de mayor volumen del país. Respaldo continuo 24/7.", "🚢"),
+        ("SENIAT-LR", "SENIAT - Gerencia Regional Tributos Internos Los Ruices", "Caracas", "Av. Francisco de Miranda, Edif. SENIAT Los Ruices", "Lic. Carmen Gómez", "+58 424-3322114", "Administradora de Sede", "Sede metropolitana de recaudación y fiscalización tributaria. Grupos en terraza y sótano.", "🏛️")
+    ]
+
+    for cod, nom, ciu, dir_, c_nom, c_tel, c_car, nots, ico in sedes_extra:
+        cursor.execute("SELECT id FROM sedes WHERE codigo = ?", (cod,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO sedes (codigo, nombre, ciudad, direccion, contacto_nombre, contacto_telefono, contacto_cargo, notas, icono)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (cod, nom, ciu, dir_, c_nom, c_tel, c_car, nots, ico))
+
+    conn.commit()
+
+    # Mapeo de IDs de sedes
+    cursor.execute("SELECT id, codigo FROM sedes")
+    sede_map = {r["codigo"]: r["id"] for r in cursor.fetchall()}
+
+    # 3. Plantas para las sedes nuevas
+    plantas_extra = [
+        # La Guaira
+        ("SENIAT-LG", "GEN-LG-01", "Planta Principal Cummins KTA19 600 kVA - Aduana La Guaira", "Cummins Power Generation", 600.0, 480.0, "Sala Técnica Marítima - Muelle 5", 1680.0, "Operativa", "Crítica",
+         "Cummins", "KTA19-G4", "37184920", "6 cilindros en línea (18.9 L)", "Turboalimentado", 680.0, "Diésel #2", "Electrónico", "38 Litros", "15W-40 CI-4", "45 Litros", "50/50 ELC", "LF9009", "FS1000", "FF5612", "AF25544", "WF2071", "24V DC", "2x 12V 1100 CCA", "Tropicalizada ambiente salino",
+         "Stamford", "HCI534E", "0245678", 600.0, 480.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico (4 Hilos)", 0.8, 1665.0, "AS440", "Brushless", "Clase H / IP23", "Resistencia de caldeo",
+         "Deep Sea Electronics", "DSE 7320 MKII", "v3.2", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "126 dientes", "Control de transferencias ATS", "En red"),
+        
+        ("SENIAT-LG", "GEN-LG-02", "Planta Respaldo Caterpillar 3406C 350 kVA - Aduana La Guaira", "Caterpillar Inc.", 350.0, 280.0, "Patio de Rayos X y Contenedores", 2150.0, "En Mantenimiento", "Alta",
+         "Caterpillar", "3406C DITA", "4CK02914", "6 en línea (14.6 L)", "Turbo posenfriado", 420.0, "Diésel #2", "Gobernador Mecánico Hydra-Mechanical", "34 Litros", "Cat DEO 15W-40", "40 Litros", "Cat ELC", "1R-1808", "1R-0770", "1R-0749", "110-6326", "N/A", "24V DC", "2x Cat 1400 CCA", "En servicio de reemplazo de mangueras",
+         "Leroy Somer", "LSA 47.2", "LS-9912", 350.0, 280.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 971.0, "R450", "AREP", "Clase H", "Bobinado protegido contra corrosión marina",
+         "ComAp", "InteliLite 4 AMF 25", "v1.4", "Manual", "20 PSI", "104 °C", "2070 RPM", "180 V", "240 V", "113 dientes", "Configurado para arranque por contacto seco", "Inspección activa"),
+
+        # Puerto Cabello
+        ("SENIAT-PC", "GEN-PC-01", "Planta Perkins 2506C 500 kVA - Aduana Puerto Cabello", "FG Wilson", 500.0, 400.0, "Sala Eléctrica Subestación Central", 1840.0, "Operativa", "Crítica",
+         "Perkins", "2506C-E15TAG2", "MGB150029", "6 en línea (15.0 L)", "Turbo y Postenfriado", 540.0, "Diésel #2", "ECM Perkins MEUI", "62 Litros", "15W-40 CI-4", "58 Litros", "Perkins Extended Life", "2654407", "26560201", "26561117", "26510342", "WF2075", "24V DC", "2x 12V 1000 CCA", "Operando en paralelo",
+         "Leroy Somer", "TAL 0473", "LS-88412", 500.0, 400.0, "480/277V Trifásico", "60 Hz", 1800, "Trifásico 4 Hilos", 0.8, 601.0, "R250", "Shunt", "Clase H", "Tensión industrial",
+         "Deep Sea Electronics", "DSE 7320", "v2.8", "Auto", "18 PSI", "102 °C", "2070 RPM", "415 V", "520 V", "136 dientes", "Vinculado a interruptor Abb Emax", "Excelente estado"),
+
+        ("SENIAT-PC", "GEN-PC-02", "Planta FG Wilson P400P5 400 kVA - Terminal Contenedores", "FG Wilson", 400.0, 320.0, "Patio Operativo Grúas Pórtico", 1220.0, "Operativa", "Alta",
+         "Perkins", "2206A-E13TAG3", "TGB130044", "6 en línea (12.5 L)", "Turboalimentado", 440.0, "Diésel #2", "Electrónico", "40 Litros", "15W-40", "42 Litros", "50/50 Glicol", "2654403", "26560143", "26560145", "26510214", "N/A", "24V DC", "2x 12V 950 CCA", "Caseta insonorizada IP55",
+         "Leroy Somer", "LL5014J", "LS-73192", 400.0, 320.0, "480/277V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 481.0, "R438", "PMG", "Clase H", "Excitatriz PMG",
+         "PowerWizard", "PW 2.1", "v1.1", "Auto", "20 PSI", "103 °C", "2070 RPM", "415 V", "520 V", "126 dientes", "Protección por sobrecarga activa", "En línea"),
+
+        # Los Ruices
+        ("SENIAT-LR", "GEN-LR-01", "Planta Kohler 250REOZJE 250 kVA - Sede Los Ruices", "Kohler Power Systems", 250.0, 200.0, "Terraza Nivel 4 - Caseta Acústica", 890.0, "Operativa", "Media",
+         "John Deere", "6090HF484", "RG6090L01928", "6 en línea (9.0 L)", "Turbocharged Charge Air Cooled", 315.0, "Diésel #2", "John Deere JDEC", "32 Litros", "John Deere Plus-50 II 15W-40", "36 Litros", "Cool-Gard II", "RE509672", "RE529643", "RE522878", "RE516335", "N/A", "12V DC", "1x 12V 1000 CCA", "Operativa para cargas administrativas",
+         "Kohler", "4UA13", "K-83729", 250.0, 200.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 694.0, "Decision-Maker 3000", "Digital", "Clase H", "Aislamiento superior",
+         "Kohler", "Decision-Maker 3000", "v2.0", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "129 dientes", "Comando a ATS Kohler MPAC", "Operativa"),
+
+        ("SENIAT-LR", "GEN-LR-02", "Planta Doosan DP158LC 500 kVA - Respaldo Servidores Los Ruices", "Doosan Infracore", 500.0, 400.0, "Sótano 1 - Sala de Transferencia", 1450.0, "Alerta", "Alta",
+         "Doosan", "DP158LC", "DP158019482", "V8 Cilindros (14.6 L)", "Twin Turbo y Enfriador Aire-Aire", 530.0, "Diésel #2", "Bosch In-line Governor", "35 Litros", "15W-40 CI-4", "48 Litros", "50/50 Etilenglicol", "65.05510-5020", "65.12503-5011", "65.12503-5016", "474-00040", "N/A", "24V DC", "2x 12V 1000 CCA", "Alerta leve por desgaste en diodos de excitatriz",
+         "Stamford", "HCI534C", "0294820", 500.0, 400.0, "208/120V Trifásico", "60 Hz", 1800, "Trifásico", 0.8, 1388.0, "AS440", "Brushless", "Clase H", "Requiere calibración de voltaje",
+         "Deep Sea Electronics", "DSE 7420", "v1.5", "Auto", "18 PSI", "102 °C", "2070 RPM", "180 V", "240 V", "160 dientes", "Registro de fluctuación de voltaje reciente", "Revisión técnica programada")
+    ]
+
+    for p in plantas_extra:
+        sede_cod = p[0]
+        p_cod = p[1]
+        sede_id = sede_map.get(sede_cod)
+        if not sede_id:
+            continue
+        cursor.execute("SELECT id FROM plantas WHERE codigo = ?", (p_cod,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO plantas (
+                    sede_id, codigo, nombre, ensambladora, capacidad_kva, capacidad_kw,
+                    ubicacion_interna, horas_operacion, estado, prioridad,
+                    motor_marca, motor_modelo, motor_serial, motor_cilindros, motor_aspiracion,
+                    motor_potencia_hp, motor_tipo_combustible, motor_gobernador,
+                    motor_capacidad_aceite, motor_viscosidad_aceite, motor_capacidad_refrigerante,
+                    motor_tipo_refrigerante, motor_filtro_aceite, motor_filtro_combustible_primario,
+                    motor_filtro_combustible_secundario, motor_filtro_aire, motor_filtro_agua_refrigerante,
+                    motor_sistema_electrico_dc, motor_baterias, motor_notas,
+                    generador_marca, generador_modelo, generador_serial, generador_kva, generador_kw,
+                    generador_voltaje, generador_frecuencia, generador_rpm, generador_fases,
+                    generador_factor_potencia, generador_amperaje_nominal, generador_modelo_avr,
+                    generador_tipo_excitacion, generador_clase_aislamiento, generador_notas,
+                    controlador_marca, controlador_modelo, controlador_firmware, controlador_modo,
+                    controlador_umbral_baja_presion_aceite, controlador_umbral_alta_temperatura,
+                    controlador_umbral_sobrevelocidad, controlador_umbral_subvoltaje, controlador_umbral_sobrevoltaje,
+                    controlador_pick_up_dientes, controlador_config_io, controlador_notas,
+                    plan_mantenimiento_texto, proximo_mantenimiento_horas, proximo_mantenimiento_tipo, manual_pdf_filename
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?
+                )
+            """, (
+                sede_id, p_cod, p[2], p[3], p[4], p[5],
+                p[6], p[7], p[8], p[9],
+                p[10], p[11], p[12], p[13], p[14],
+                p[15], p[16], p[17],
+                p[18], p[19], p[20],
+                p[21], p[22], p[23],
+                p[24], p[25], p[26],
+                p[27], p[28], p[29],
+                p[30], p[31], p[32], p[33], p[34],
+                p[35], p[36], p[37], p[38],
+                p[39], p[40], p[41],
+                p[42], p[43], p[44],
+                p[45], p[46], p[47], p[48],
+                p[49], p[50],
+                p[51], p[52], p[53],
+                p[54], p[55], p[56],
+                "📋 PLAN DE MANTENIMIENTO PREVENTIVO OEM:\n• Cada 250h: Aceite y filtros.\n• Cada 500h: Filtros de aire y refrigerante.\n• Anual: Calibración y megado.",
+                p[7] + 250.0, "Mantenimiento Preventivo A", "Manual Definitivo de Generadores Diésel.pdf"
+            ))
+
+    conn.commit()
+
+    # Mapeo de IDs de plantas
+    cursor.execute("SELECT id, codigo FROM plantas")
+    plantas_map = {r["codigo"]: r["id"] for r in cursor.fetchall()}
+
+    # 4. Sembrar historial de trabajos enriquecido 2026 (si hay menos de 15 trabajos)
+    cursor.execute("SELECT COUNT(*) as cnt FROM trabajos_mantenimiento")
+    if cursor.fetchone()["cnt"] < 15:
+        historical_jobs = [
+            # ENERO 2026
+            ("GEN-TC-01", "2026-01-10", "Mantenimiento Preventivo A (250h)", 1250.0, "Gabriel F.",
+             "Mantenimiento Preventivo 250h: Filtros Fleetguard y Aceite 15W-40",
+             "Drenado de cárter en caliente, sustitución de filtro de aceite LF9009, separador FS1000 y secundario FF5612. Purga y cebado de riel común. Ajuste de correas.",
+             "Filtros LF9009, FS1000, FF5612, 28L Mobil Delvac 15W-40", "Parámetros normales: 46 PSI, 82°C en prueba con carga.",
+             2800.0, 2450.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-LG-02", "2026-01-18", "Mantenimiento Correctivo / Falla", 2010.0, "Ing. R. Silva",
+             "Atención de Falla: Falla de Arranque por Sulfatación Severa en Bornes",
+             "El grupo no logró marcha durante corte de Corpoelec en muelle. Se encontró sulfatación extrema en bornes de baterías de 24V con caída a 14V al dar marcha. Limpieza con bicarbonato, cambio de terminales de cobre y reapriete.",
+             "4x Terminales de compresión 2/0 AWG, grasa dieléctrica para bornes", "Se programó sustitución de cargador de flote auxiliar.",
+             1200.0, 980.0, "Baterías y Arranque", "Completado"),
+
+            ("GEN-BK-01", "2026-01-27", "Mantenimiento Preventivo Semestral", 580.0, "Personal Técnico IG",
+             "Servicio Semestral Programado y Prueba ATS Centro de Datos",
+             "Inspección de 50 puntos según checklist OEM Cummins QST30. Análisis espectrométrico de aceite SOS y prueba de conmutación en tablero de transferencia ASCO 7000 en 1.8 segundos.",
+             "Kits de filtros Fleetguard LF9000, FS1006, FF5488, grasa de acople", "Generador principal en óptimo estado de disponibilidad.",
+             6500.0, 5800.0, "Lubricación y Filtros", "Completado"),
+
+            # FEBRERO 2026
+            ("GEN-PC-01", "2026-02-05", "Mantenimiento Correctivo / Falla", 1720.0, "Ing. M. Rivas",
+             "Atención a Falla: Saturación por Condensación y Agua en Filtro Separador",
+             "Alarma de pérdida de potencia bajo carga alta en Aduana Puerto Cabello. Se detectó agua acumulada y sedimentos en tazón de filtro racor 26560201. Purga de fondo de tanque diario y reemplazo de cartuchos.",
+             "2x Filtros Perkins 26560201, 1x Aditivo biocida para diésel marino", "Se recomendó purga semanal obligatoria por alta humedad en zona de muelles.",
+             1800.0, 1450.0, "Sistema de Combustible", "Completado"),
+
+            ("GEN-TC-02", "2026-02-14", "Calibración y Pruebas Eléctricas", 920.0, "Gabriel F.",
+             "Calibración de Gobernador Electrónico y Regulación de Frecuencia 60 Hz",
+             "Desviación de velocidad (62.5 Hz en vacío y caída a 57.8 Hz con carga). Con herramienta Cat ET se recalibró la ganancia proporcional de ECM ADEM A4 y estabilidad de gobernador.",
+             "Software Cat ET, limpieza de arnés de control", "Frecuencia regulada a 60.0 Hz ±0.2% en todo el rango de potencia.",
+             1500.0, 1150.0, "Sistema Eléctrico / AVR", "Completado"),
+
+            ("GEN-MC-01", "2026-02-22", "Mantenimiento Preventivo B (500h)", 840.0, "Personal Técnico IG",
+             "Servicio 500 Horas: Reemplazo Integral de Fluidos y Filtro de Aire",
+             "Cambio de 27L de aceite motor 15W-40, filtro Perkins 2654407, elemento de aire 26510342 y refrigerante Perkins Extended Life. Desengrase de motor y soplado de radiador.",
+             "Aceite 15W-40 CI-4, filtro aire 26510342, 30L refrigerante 50/50", "Planta lista para temporada de alta demanda fiscal.",
+             3200.0, 2750.0, "Lubricación y Filtros", "Completado"),
+
+            # MARZO 2026
+            ("GEN-LR-02", "2026-03-08", "Mantenimiento Correctivo / Falla", 1380.0, "Lic. C. Gómez",
+             "Atención de Emergencia: Alarma de Alta Temperatura por Fisura en Manguera",
+             "Parada de emergencia en Doosan 500 kVA durante racionamiento eléctrico. Se detectó rotura en manguera superior de radiador con fuga de refrigerante y disparo a 104°C. Reemplazo inmediato de manguera de silicona y purga de aire.",
+             "1x Manguera de silicona alta temperatura 3 pulgadas, 40L refrigerante 50/50", "Sobrecosto por adquisición urgente fuera de horario.",
+             2100.0, 2350.0, "Refrigeración / Temperatura", "Completado"),
+
+            ("GEN-LG-01", "2026-03-15", "Mantenimiento Preventivo A", 1550.0, "Ing. R. Silva",
+             "Mantenimiento Programado y Lavado Químico Anti-Salitre de Panal",
+             "Mantenimiento regular 250h en Cummins KTA19. Lavado de radiador con compuesto desincrustante biodegradable para remover depósito salino costero. Verificación de terminales Stamford.",
+             "Filtros LF9009, FS1000, químico desengrasante marítimo", "Radiador con 100% de flujo de aire restituido.",
+             3400.0, 2890.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-BK-01", "2026-03-24", "Mantenimiento Preventivo", 610.0, "Gabriel F.",
+             "Sustitución de Empacaduras de Tapa de Válvulas y Torques OEM",
+             "Se atendió leve rezume de aceite sobre el múltiple de escape de bancada izquierda en motor QST30. Reemplazo de empacaduras de elastómero y apriete con torquímetro.",
+             "2x Empacaduras Cummins OEM de tapa de válvulas", "Motor sellado y completamente limpio sin rezumes.",
+             1600.0, 1250.0, "Lubricación y Filtros", "Completado"),
+
+            # ABRIL 2026
+            ("GEN-TC-01", "2026-04-04", "Mantenimiento Correctivo / Falla", 1310.0, "Personal Técnico IG",
+             "Falla de Lectura de RPM y Sustitución de Sensor Magnético MPU",
+             "Alarma en DSE 7320: 'Loss of MPU signal'. El motor arrancaba pero cortaba por sobrevelocidad falsa. Se retiró sensor pick-up en corona dentada, encontrándose virutas metálicas en la punta magnética. Sustitución y calibración a 1/2 vuelta.",
+             "1x Sensor MPU 5/8-18 UNF magnético Deep Sea", "Lectura de RPM exacta y lectura en controlador verificada.",
+             950.0, 780.0, "Controlador y Sensores DSE", "Completado"),
+
+            ("GEN-PC-02", "2026-04-16", "Mantenimiento Preventivo A", 1150.0, "Ing. M. Rivas",
+             "Servicio Preventivo 250h en FG Wilson P400P5",
+             "Reemplazo de tren de filtración Perkins y aceite motor. Inspección de caja de conexiones de alternador Leroy Somer.",
+             "Filtros 2654403, 26560143, 26560145, 38L lubricante 15W-40", "Equipo trabajando sin novedades al 70% de carga.",
+             2600.0, 2200.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-BK-01", "2026-04-29", "Mantenimiento Preventivo Especial", 640.0, "Gabriel F.",
+             "Reemplazo Preventivo de Banco de Baterías de Arranque 24V",
+             "Cumplimiento de ciclo de vida de 2 años en banco de baterías del centro de datos. Instalación de 4 unidades selladas 12V 1300 CCA de ciclado profundo en esquema serie-paralelo.",
+             "4x Baterías Heavy Duty 12V 1300 CCA, cables puente 4/0 AWG", "Prueba de arranque en frío bajo 2.1 segundos.",
+             4200.0, 3900.0, "Baterías y Arranque", "Completado"),
+
+            # MAYO 2026
+            ("GEN-LG-02", "2026-05-11", "Mantenimiento Correctivo / Falla", 2080.0, "Ing. R. Silva",
+             "Falla de Regulación de Voltaje por Falla en Tarjeta Reguladora AVR R450",
+             "El grupo presentaba sobretensión intermitente (245 VAC fase-neutro) provocando disparo del interruptor. Se diagnosticó varistor quemado en tarjeta Leroy Somer R450. Instalación de nuevo AVR y calibración de LAM.",
+             "1x Regulador de Voltaje Leroy Somer R450 original", "Voltaje estabilizado en 208/120V.",
+             1750.0, 1320.0, "Sistema Eléctrico / AVR", "Completado"),
+
+            ("GEN-LR-01", "2026-05-20", "Mantenimiento Preventivo A", 780.0, "Lic. C. Gómez",
+             "Mantenimiento 250h en Generador Kohler John Deere",
+             "Servicio de cambio de aceite John Deere Plus-50 II y filtros de combustible. Verificación de pantalla Decision-Maker 3000.",
+             "Filtros Donaldson / John Deere RE509672, RE529643, 30L aceite", "Presión en 50 PSI a 1800 RPM.",
+             2400.0, 1980.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-TC-02", "2026-05-28", "Inspección y Pruebas Eléctricas", 960.0, "Gabriel F.",
+             "Reapriete de Barras de Potencia y Limpieza con Dieléctrico",
+             "Termografía infrarroja en breaker ABB motorizado y bornes de alternador TAL 0473. No se detectaron puntos calientes. Reapriete general de pernos.",
+             "Spray dieléctrico CRC, precintos de seguridad", "Termografía dentro de rango permisible (<45°C).",
+             1200.0, 950.0, "Sistema Eléctrico / AVR", "Completado"),
+
+            # JUNIO 2026
+            ("GEN-PC-01", "2026-06-03", "Mantenimiento Correctivo / Falla", 1780.0, "Ing. M. Rivas",
+             "Atención a Falla: Fuga de Gasoil en Manguera de Retorno de Inyectores",
+             "Detección de goteo de diésel sobre el colector de escape durante inspección visual rutinaria en Puerto Cabello. Sustitución preventiva de manguera de baja presión para prevenir riesgo de conflagración.",
+             "Manguera Gates diésel 3/8 y abrazaderas de acero inoxidable", "Prueba de 30 minutos sin fugas.",
+             800.0, 650.0, "Sistema de Combustible", "Completado"),
+
+            ("GEN-TC-01", "2026-06-18", "Servicio Mayor Anual", 1370.0, "Gabriel F.",
+             "Servicio Mayor Semestral: Calibración de Válvulas y Megado de Alternador",
+             "Ajuste de luz de válvulas de admisión (0.30mm) y escape (0.58mm) en motor Cummins QSL9. Prueba de aislamiento con megóhmetro (55 Megaohmios en estator y rotor).",
+             "Juntas de tapa balancines, filtros completos Fleetguard", "Respuesta motriz y eficiencia de combustión optimizadas.",
+             5200.0, 4100.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-MC-01", "2026-06-27", "Mantenimiento Correctivo / Falla", 890.0, "Personal Técnico IG",
+             "Falla en Solenoide de Parada de Combustible",
+             "El grupo no se detenía tras pulsar botón de paro en controlador DSE. Desarme y reemplazo de solenoide de corte por bobina recalentada en Mata de Coco.",
+             "1x Solenoide de combustible Woodward 24V DC", "Parada instantánea verificada.",
+             1100.0, 920.0, "Sistema de Combustible", "Completado"),
+
+            # JULIO 2026
+            ("GEN-LG-01", "2026-07-09", "Mantenimiento Preventivo", 1620.0, "Ing. R. Silva",
+             "Limpieza Profunda de Radiador y Lavado Químico Anti-Incrustante",
+             "Remoción de suciedad acumulada por vientos marinos en Aduana La Guaira. Soplado inverso de panal y cambio de filtro de agua con pastilla inhibidora Fleetguard WF2071.",
+             "1x Filtro químico WF2071, desengrasante cítrico industrial", "Temperatura de operación estabilizada en 84°C.",
+             2900.0, 2450.0, "Refrigeración / Temperatura", "Completado"),
+
+            ("GEN-BK-01", "2026-07-21", "Mantenimiento Correctivo / Falla", 690.0, "Personal Técnico IG",
+             "Desincronismo en Módulo DSE 8620 con Red Corpoelec",
+             "Alarma 'Phase angle error' durante retorno de red comercial. Se reconfiguraron los umbrales de sincronismo (ventana de ±5V, ±0.2 Hz) y se actualizó firmware.",
+             "Cable USB de programación DSE-P810, licencia software DSE", "Transferencias suaves sin microcortes.",
+             3500.0, 2800.0, "Controlador y Sensores DSE", "Completado"),
+
+            ("GEN-LR-02", "2026-07-30", "Mantenimiento Preventivo", 1410.0, "Lic. C. Gómez",
+             "Sustitución Preventiva de Termostato Motor Doosan",
+             "Reemplazo preventivo de par de termostatos de 82°C para evitar fallas por fatiga térmica en sala de máquinas sótano.",
+             "2x Termostatos Doosan OEM, juntas tóricas", "Apertura simétrica y temperatura uniforme en ambas culatas.",
+             1400.0, 1150.0, "Refrigeración / Temperatura", "Completado"),
+
+            # AGOSTO 2026
+            ("GEN-TC-02", "2026-08-04", "Mantenimiento Correctivo / Falla", 1010.0, "Gabriel F.",
+             "Sustitución de Calentador de Camisa de Bloque (Block Heater 2.5 kW)",
+             "Detección de motor frío (22°C en reposo). Resistencia interna del calentador abierta por sarro. Se instaló nuevo calefactor con termostato incorporado a 45°C.",
+             "1x Calentador Hotstart 2500W 208V con termostato", "Motor tibio garantizando arranque inmediato bajo carga.",
+             1400.0, 1150.0, "Sistema Eléctrico / AVR", "Completado"),
+
+            ("GEN-PC-02", "2026-08-16", "Mantenimiento Preventivo A", 1200.0, "Ing. M. Rivas",
+             "Servicio 250h en FG Wilson Puerto Cabello",
+             "Filtros de aceite y combustible Perkins. Ajuste de fajas de ventilador.",
+             "Kits de filtros 2654403, 26560143, aceite 15W-40", "Equipo 100% operativo.",
+             2800.0, 2300.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-LR-02", "2026-08-28", "Mantenimiento Correctivo / Falla", 1430.0, "Personal Técnico IG",
+             "Alarma de Baja Presión de Aceite por Obstrucción Prematura de Filtros",
+             "Disparo a 19 PSI en Doosan Los Ruices. Se comprobó que el lote de aceite anterior se degradó por hollín excesivo. Cambio inmediato de aceite de alta detergencia y doble filtro.",
+             "2x Filtros de aceite Doosan, 35L lubricante Mobil Delvac CK-4", "Presión normalizada en 48 PSI en caliente.",
+             1300.0, 1050.0, "Lubricación y Filtros", "Completado"),
+
+            # SEPTIEMBRE 2026
+            ("GEN-TC-01", "2026-09-08", "Mantenimiento Preventivo A (250h)", 1410.0, "Gabriel F.",
+             "Mantenimiento Preventivo 250h Programado Cummins QSL9",
+             "Mantenimiento regular de manual. Reemplazo de filtros Fleetguard LF9009, FS1000, FF5612 y aceite 15W-40. Limpieza de borne de carga auxiliar.",
+             "Tren completo Fleetguard, 28L aceite Mobil Delvac", "Operativo 100%.",
+             3100.0, 2600.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-LG-02", "2026-09-17", "Mantenimiento Correctivo / Falla", 2120.0, "Ing. R. Silva",
+             "Purga de Entrada de Aire en Riel Común y Reemplazo de Bomba Manual",
+             "El motor no lograba encendido tras permanecer 4 días en reposo. Se encontró fisura en membrana de cebador manual de combustible permitiendo entrada de aire. Sustitución de bomba de mano y purga de inyectores.",
+             "1x Bomba de cebado manual Caterpillar 1375541", "Arranque en menos de 3 segundos verificado.",
+             1450.0, 1200.0, "Sistema de Combustible", "Completado"),
+
+            ("GEN-BK-01", "2026-09-29", "Calibración y Pruebas Eléctricas", 720.0, "Gabriel F.",
+             "Calibración de Tarjeta Reguladora AVR MX321 y Excitación PMG",
+             "Verificación de diodos giratorios en alternador Stamford HVSI804R del Centro de Datos. Calibración de estabilidad y factor de caída de voltaje droop para paralelismo.",
+             "Diodos de repuesto SKN/SKR, aerosol dieléctrico", "Curva de voltaje estable a carga plena.",
+             3800.0, 2950.0, "Sistema Eléctrico / AVR", "Completado"),
+
+            # OCTUBRE 2026
+            ("GEN-MC-01", "2026-10-06", "Mantenimiento Correctivo / Falla", 940.0, "Personal Técnico IG",
+             "Sustitución de Manguera de Retorno de Enfriador de Aceite",
+             "Atención de goteo en manguera hidráulica de enfriador en Mata de Coco. Instalación de manguera R6 con mallado textil resistente a temperatura.",
+             "Manguera SAE 100 R6 1/2 pulgada y abrazaderas de torque constante", "Equipo listo para soporte operativo.",
+             1250.0, 1100.0, "Refrigeración / Temperatura", "Completado"),
+
+            ("GEN-LR-01", "2026-10-14", "Mantenimiento Preventivo A", 890.0, "Lic. C. Gómez",
+             "Mantenimiento Preventivo A Kohler 250 kVA Sede Los Ruices",
+             "Cambio de filtros y aceite. Comprobación de tensión en cargador de flote estático 12V 10A.",
+             "Filtros John Deere, 30L aceite 15W-40", "Excelente respuesta dinámica.",
+             2300.0, 1850.0, "Lubricación y Filtros", "Completado"),
+
+            ("GEN-TC-01", "2026-10-20", "Calibración y Pruebas Especiales", 1430.0, "Gabriel F.",
+             "Prueba con Banco de Carga Resistiva al 100% de Capacidad (400 kW)",
+             "Prueba anual de descarbonización con banco resistivo externo durante 2 horas continuas al 100% de potencia nominal. Presión de aceite estable en 44 PSI, temperatura en 88°C, sin caída de frecuencia.",
+             "Servicio de banco de carga y combustible diésel para la prueba", "Eliminación completa de depósitos de carbonilla en escape.",
+             2700.0, 2150.0, "Sistema Eléctrico / AVR", "Completado")
+        ]
+
+        for h in historical_jobs:
+            p_cod = h[0]
+            planta_id = plantas_map.get(p_cod)
+            if not planta_id:
+                continue
+            cursor.execute("""
+                INSERT INTO trabajos_mantenimiento (
+                    planta_id, fecha, tipo_trabajo, horas_horometro, tecnico,
+                    titulo, descripcion, repuestos_utilizados, observaciones, fotos_json,
+                    costo_proyectado, costo_real, categoria_falla, estado_servicio
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                planta_id, h[1], h[2], h[3], h[4],
+                h[5], h[6], h[7], h[8], "[]",
+                h[9], h[10], h[11], h[12]
+            ))
+
+        conn.commit()
+        print("¡Historial multi-mes 2026 y sedes enriquecidas exitosamente para el Dashboard!")
+
 if __name__ == "__main__":
     init_database()
+

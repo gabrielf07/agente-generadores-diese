@@ -6,14 +6,22 @@
 
 // --- Estado Global de la Aplicación ---
 const state = {
-  currentView: 'sedes',
+  currentView: 'dashboard',
   sedes: [],
   currentSede: null,
   currentPlanta: null,
   allPlantas: [],
   allCases: [],
   chatPlantaId: null,
-  plantaToDeleteId: null
+  plantaToDeleteId: null,
+  dashboardFilters: {
+    year: 2026,
+    month: null, // null = Todo el año (por defecto)
+    sede_id: null,
+    tipo_trabajo: 'Todos',
+    categoria: 'Todas'
+  },
+  dashboardData: null
 };
 
 // =========================================================================
@@ -31,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.location.hash) {
     handleHashRouting();
   } else {
-    navigateToHash('#/sedes');
+    navigateToHash('#/dashboard');
   }
 });
 
@@ -40,6 +48,11 @@ function setDefaultJobDate() {
   if (dateInput) {
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
+  }
+  const globalDate = document.getElementById('global-trabajo-fecha');
+  if (globalDate) {
+    const today = new Date().toISOString().split('T')[0];
+    globalDate.value = today;
   }
 }
 
@@ -78,9 +91,12 @@ async function loadInitialData() {
 }
 
 function handleHashRouting() {
-  const hash = window.location.hash || '#/sedes';
+  const hash = window.location.hash || '#/dashboard';
 
-  if (hash === '#/sedes' || hash === '') {
+  if (hash === '#/dashboard' || hash === '' || hash === '#/') {
+    showView('dashboard');
+    fetchDashboardData();
+  } else if (hash === '#/sedes') {
     showView('sedes');
     fetchSedes();
   } else if (hash.startsWith('#/sede/')) {
@@ -111,18 +127,51 @@ function showView(viewName) {
   document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
 
   // Actualizar botones del navbar
-  document.querySelectorAll('.nav-actions .btn').forEach(b => b.classList.remove('btn-primary'));
-  
-  if (viewName === 'sedes') {
-    document.getElementById('view-sedes').classList.add('active');
+  document.querySelectorAll('.nav-actions .btn').forEach(b => {
+    b.classList.remove('btn-primary');
+    if (!b.classList.contains('btn-ai-sparkle') && !b.classList.contains('btn-success')) {
+      b.classList.add('btn-secondary');
+    }
+  });
+
+  if (viewName === 'dashboard') {
+    const dashSec = document.getElementById('view-dashboard');
+    if (dashSec) dashSec.classList.add('active');
+    const navDash = document.getElementById('nav-btn-dashboard');
+    if (navDash) {
+      navDash.classList.remove('btn-secondary');
+      navDash.classList.add('btn-primary');
+    }
+  } else if (viewName === 'sedes') {
+    const sedesSec = document.getElementById('view-sedes');
+    if (sedesSec) sedesSec.classList.add('active');
+    const navSedes = document.getElementById('nav-btn-sedes');
+    if (navSedes) {
+      navSedes.classList.remove('btn-secondary');
+      navSedes.classList.add('btn-primary');
+    }
   } else if (viewName === 'sede-plantas') {
-    document.getElementById('view-sede-plantas').classList.add('active');
+    const spSec = document.getElementById('view-sede-plantas');
+    if (spSec) spSec.classList.add('active');
   } else if (viewName === 'planta-detail') {
-    document.getElementById('view-planta-detail').classList.add('active');
+    const pdSec = document.getElementById('view-planta-detail');
+    if (pdSec) pdSec.classList.add('active');
   } else if (viewName === 'cases') {
-    document.getElementById('view-cases').classList.add('active');
+    const casesSec = document.getElementById('view-cases');
+    if (casesSec) casesSec.classList.add('active');
+    const navCases = document.getElementById('nav-btn-cases');
+    if (navCases) {
+      navCases.classList.remove('btn-secondary');
+      navCases.classList.add('btn-primary');
+    }
   } else if (viewName === 'manuals') {
-    document.getElementById('view-manuals').classList.add('active');
+    const manualsSec = document.getElementById('view-manuals');
+    if (manualsSec) manualsSec.classList.add('active');
+    const navManuals = document.getElementById('nav-btn-manuals');
+    if (navManuals) {
+      navManuals.classList.remove('btn-secondary');
+      navManuals.classList.add('btn-primary');
+    }
   }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1274,5 +1323,644 @@ async function handleUploadManual(event) {
     fetchManuals();
   } catch (err) {
     showToast('Error: ' + err.message, 'danger');
+  }
+}
+
+// =========================================================================
+// MOTOR DEL DASHBOARD EJECUTIVO INTERACTIVO (POWER BI SENIAT)
+// =========================================================================
+
+let chartCostos = null;
+let chartSedes = null;
+let chartFallas = null;
+
+async function fetchDashboardData() {
+  const params = new URLSearchParams();
+  if (state.dashboardFilters.year) params.append('year', state.dashboardFilters.year);
+  if (state.dashboardFilters.month) params.append('month', state.dashboardFilters.month);
+  if (state.dashboardFilters.sede_id) params.append('sede_id', state.dashboardFilters.sede_id);
+  if (state.dashboardFilters.tipo_trabajo && state.dashboardFilters.tipo_trabajo !== 'Todos') {
+    params.append('tipo_trabajo', state.dashboardFilters.tipo_trabajo);
+  }
+  if (state.dashboardFilters.categoria && state.dashboardFilters.categoria !== 'Todas') {
+    params.append('categoria', state.dashboardFilters.categoria);
+  }
+
+  try {
+    const res = await fetch(`/api/dashboard/analytics?${params.toString()}`);
+    if (!res.ok) throw new Error('Error al cargar métricas del dashboard');
+    const data = await res.json();
+    state.dashboardData = data;
+
+    renderDashboardKPIs(data.kpis);
+    renderDashboardCharts(data);
+    renderDashboardTable(data.servicios_detalle);
+    populateDashboardSlicers(data);
+    updateFilterStatusText(data);
+  } catch (err) {
+    console.error('Error en fetchDashboardData:', err);
+    showToast('Error al actualizar datos del dashboard: ' + err.message, 'danger');
+  }
+}
+
+function updateFilterStatusText(data) {
+  const statusEl = document.getElementById('filter-active-summary');
+  if (!statusEl) return;
+
+  const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  let text = '';
+  if (state.dashboardFilters.month) {
+    text = `Mes de ${monthNames[state.dashboardFilters.month]} ${data.filter_applied.year}`;
+  } else {
+    text = `Año Completo ${data.filter_applied.year}`;
+  }
+
+  if (state.dashboardFilters.sede_id) {
+    const s = data.available_sedes.find(x => x.id === state.dashboardFilters.sede_id);
+    if (s) text += ` • ${s.codigo}`;
+  }
+
+  if (state.dashboardFilters.tipo_trabajo && state.dashboardFilters.tipo_trabajo !== 'Todos') {
+    text += ` • ${state.dashboardFilters.tipo_trabajo.replace('Mantenimiento ', '')}`;
+  }
+
+  statusEl.textContent = text;
+}
+
+function renderDashboardKPIs(kpis) {
+  if (!kpis) return;
+
+  const setTxt = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+  setTxt('kpi-total-sedes', kpis.total_sedes);
+  setTxt('kpi-total-plantas', kpis.total_plantas);
+  setTxt('kpi-total-kva', Number(kpis.total_kva).toLocaleString());
+
+  const diff = kpis.diferencia;
+  const diffSign = diff >= 0 ? '$' : '-$';
+  setTxt('kpi-diferencia', `${diffSign}${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+  const badgeEl = document.getElementById('kpi-variacion-badge');
+  if (badgeEl) {
+    if (diff >= 0) {
+      badgeEl.className = 'kpi-badge badge-success';
+      badgeEl.innerHTML = `↓ ${Math.abs(kpis.variacion_pct)}% Ahorro`;
+    } else {
+      badgeEl.className = 'kpi-badge badge-danger';
+      badgeEl.innerHTML = `↑ ${Math.abs(kpis.variacion_pct)}% Sobrecosto`;
+    }
+  }
+
+  setTxt('kpi-costo-proyectado', `$${Number(kpis.costo_proyectado).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  setTxt('kpi-costo-real', `$${Number(kpis.costo_real).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+  const progEl = document.getElementById('kpi-budget-progress');
+  if (progEl) {
+    const pct = kpis.costo_proyectado > 0 ? Math.min(100, (kpis.costo_real / kpis.costo_proyectado) * 100) : 0;
+    progEl.style.width = `${pct}%`;
+    progEl.style.background = pct > 100 ? '#ef4444' : '#2563eb';
+  }
+
+  setTxt('kpi-disponibilidad', `${kpis.disponibilidad_pct}%`);
+  setTxt('kpi-operativas-count', `${kpis.plantas_operativas} Operativas`);
+  setTxt('kpi-alerta-count', `${kpis.plantas_alerta} Alerta`);
+
+  setTxt('kpi-total-servicios', kpis.total_servicios);
+  setTxt('kpi-preventivos-count', kpis.total_preventivos);
+  setTxt('kpi-fallas-count', kpis.total_fallas);
+}
+
+function renderDashboardCharts(data) {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js no está disponible en la página');
+    return;
+  }
+
+  // 1. Gráfico de Costos Proyectado vs Real & Servicios (Combo Bar + Line)
+  const ctxCostos = document.getElementById('chart-costos-tendencia');
+  if (ctxCostos) {
+    const labels = data.trend_monthly.map(m => m.short);
+    const serviciosData = data.trend_monthly.map(m => m.servicios);
+    const proyectadoData = data.trend_monthly.map(m => m.costo_proyectado);
+    const realData = data.trend_monthly.map(m => m.costo_real);
+
+    const barColors = data.trend_monthly.map(m => {
+      if (state.dashboardFilters.month && m.mes === state.dashboardFilters.month) {
+        return '#0284c7';
+      }
+      return 'rgba(56, 189, 248, 0.45)';
+    });
+
+    const barBorders = data.trend_monthly.map(m => {
+      if (state.dashboardFilters.month && m.mes === state.dashboardFilters.month) {
+        return '#0369a1';
+      }
+      return '#38bdf8';
+    });
+
+    if (chartCostos) chartCostos.destroy();
+
+    chartCostos = new Chart(ctxCostos, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Servicios Ejecutados',
+            data: serviciosData,
+            backgroundColor: barColors,
+            borderColor: barBorders,
+            borderWidth: 1.5,
+            borderRadius: 6,
+            yAxisID: 'y1',
+            order: 2
+          },
+          {
+            type: 'line',
+            label: 'Costo Proyectado ($)',
+            data: proyectadoData,
+            borderColor: '#2563eb',
+            backgroundColor: '#2563eb',
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.35,
+            yAxisID: 'y',
+            order: 1
+          },
+          {
+            type: 'line',
+            label: 'Costo Real ($)',
+            data: realData,
+            borderColor: '#f97316',
+            backgroundColor: '#f97316',
+            borderWidth: 2.5,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.35,
+            yAxisID: 'y',
+            order: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                if (context.dataset.yAxisID === 'y') {
+                  return `${context.dataset.label}: $${Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                }
+                return `${context.dataset.label}: ${context.raw} servicios`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            title: { display: true, text: 'Monto ($)', font: { size: 11, weight: '600' } },
+            ticks: {
+              callback: function(val) {
+                return '$' + (val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val);
+              }
+            },
+            grid: { color: 'rgba(226, 232, 240, 0.6)' }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            title: { display: true, text: '# Servicios', font: { size: 11, weight: '600' } },
+            grid: { drawOnChartArea: false },
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  // 2. Gráfico de Sedes Ranking (Horizontal Bar Chart)
+  const ctxSedes = document.getElementById('chart-sedes-ranking');
+  if (ctxSedes) {
+    const topSedes = data.sedes_ranking.slice(0, 6);
+    const sedeLabels = topSedes.map(s => s.nombre.replace('SENIAT - ', ''));
+    const totalServicios = topSedes.map(s => s.total_servicios);
+    const totalFallas = topSedes.map(s => s.total_fallas);
+
+    if (chartSedes) chartSedes.destroy();
+
+    chartSedes = new Chart(ctxSedes, {
+      type: 'bar',
+      data: {
+        labels: sedeLabels,
+        datasets: [
+          {
+            label: 'Total Mantenimientos',
+            data: totalServicios,
+            backgroundColor: '#3b82f6',
+            borderRadius: 5
+          },
+          {
+            label: 'Fallas / Correctivos',
+            data: totalFallas,
+            backgroundColor: '#ef4444',
+            borderRadius: 5
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { font: { size: 11 }, boxWidth: 12 }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(226, 232, 240, 0.6)' },
+            ticks: { precision: 0 }
+          },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // 3. Gráfico de Fallas por Categoría (Doughnut)
+  const ctxFallas = document.getElementById('chart-fallas-categoria');
+  if (ctxFallas) {
+    const cats = data.fallas_por_categoria.filter(c => c.cantidad > 0);
+    const catLabels = cats.map(c => c.categoria);
+    const catCounts = cats.map(c => c.cantidad);
+    const catColors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+    if (chartFallas) chartFallas.destroy();
+
+    chartFallas = new Chart(ctxFallas, {
+      type: 'doughnut',
+      data: {
+        labels: catLabels,
+        datasets: [
+          {
+            data: catCounts,
+            backgroundColor: catColors.slice(0, catLabels.length),
+            borderWidth: 2,
+            borderColor: '#ffffff',
+            hoverOffset: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { font: { size: 11 }, boxWidth: 12, padding: 10 }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0;
+                return `${context.label}: ${context.raw} (${pct}%)`;
+              }
+            }
+          }
+        },
+        cutout: '62%'
+      }
+    });
+  }
+}
+
+function renderDashboardTable(servicios) {
+  const tbody = document.getElementById('dashboard-table-tbody');
+  if (!tbody) return;
+
+  if (!servicios || servicios.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="13" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+          No se encontraron mantenimientos para los filtros seleccionados.
+        </td>
+      </tr>
+    `;
+    updateTableTotals([], 0, 0, 0);
+    return;
+  }
+
+  let html = '';
+  let sumProy = 0;
+  let sumReal = 0;
+
+  servicios.forEach(s => {
+    const cProy = parseFloat(s.costo_proyectado || 0);
+    const cReal = parseFloat(s.costo_real || 0);
+    const diff = cProy - cReal;
+    sumProy += cProy;
+    sumReal += cReal;
+
+    const diffBadge = diff >= 0
+      ? `<span class="variance-arrow down-green" title="Ahorro vs presupuestado">↓ $${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>`
+      : `<span class="variance-arrow up-red" title="Sobrecosto vs presupuestado">↑ $${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>`;
+
+    const varPctBadge = diff >= 0
+      ? `<span class="kpi-badge badge-success">-${Math.abs(s.variacion_pct || 0)}%</span>`
+      : `<span class="kpi-badge badge-danger">+${Math.abs(s.variacion_pct || 0)}%</span>`;
+
+    const isFalla = (s.tipo_trabajo || '').includes('Correctivo') || (s.tipo_trabajo || '').includes('Falla') || (s.titulo || '').includes('Falla');
+    const tipoBadge = isFalla 
+      ? `<span class="kpi-badge badge-danger">Falla</span>`
+      : `<span class="kpi-badge badge-success">Prev</span>`;
+
+    html += `
+      <tr data-search="${(s.planta_codigo + ' ' + s.planta_nombre + ' ' + s.sede_nombre + ' ' + s.tecnico + ' ' + s.titulo + ' ' + s.categoria_falla).toLowerCase()}">
+        <td><strong style="color: var(--primary); cursor: pointer;" onclick="navigateToHash('#/planta/${s.planta_id}')">${escapeHTML(s.planta_codigo)}</strong></td>
+        <td>${escapeHTML(s.sede_icono || '🏢')} ${escapeHTML(s.sede_nombre.replace('SENIAT - ', ''))}</td>
+        <td>${tipoBadge} ${escapeHTML(s.tipo_trabajo.replace('Mantenimiento ', ''))}</td>
+        <td><span style="font-weight: 600; color: #475569;">${escapeHTML(s.categoria_falla || 'Lubricación')}</span></td>
+        <td>${escapeHTML(s.fecha)}</td>
+        <td>${Number(s.horas_horometro || 0).toLocaleString()} h</td>
+        <td>${escapeHTML(s.tecnico)}</td>
+        <td class="text-right" style="font-family: var(--font-mono);">$${cProy.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <td class="text-right" style="font-family: var(--font-mono); font-weight: 700;">$${cReal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        <td class="text-right">${diffBadge}</td>
+        <td class="text-center">${varPctBadge}</td>
+        <td><span class="dot green"></span> ${escapeHTML(s.estado_servicio || 'Completado')}</td>
+        <td class="text-center" style="white-space: nowrap;">
+          <button class="table-btn-action btn-view" onclick="navigateToHash('#/planta/${s.planta_id}')" title="Ver ficha técnica de la planta">🔍 Ficha</button>
+          <button class="table-btn-action btn-ask" onclick="openChatWithContext('Analiza la intervención del ${s.fecha} en la planta ${s.planta_codigo} (${s.sede_nombre}): ${escapeHTML(s.titulo)}. ¿Qué causas de raíz y acciones preventivas recomiendas?', ${s.planta_id})" title="Preguntar al agente IA sobre este trabajo">🤖 IA</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+  updateTableTotals(servicios, sumProy, sumReal, sumProy - sumReal);
+}
+
+function updateTableTotals(servicios, sumProy, sumReal, diff) {
+  const elProy = document.getElementById('table-total-proyectado');
+  const elReal = document.getElementById('table-total-real');
+  const elDiff = document.getElementById('table-total-diferencia');
+  const elVar = document.getElementById('table-total-variacion');
+  const elCnt = document.getElementById('table-total-count');
+
+  if (elProy) elProy.innerHTML = `<strong>$${sumProy.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>`;
+  if (elReal) elReal.innerHTML = `<strong>$${sumReal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>`;
+
+  if (elDiff) {
+    const diffSign = diff >= 0 ? '$' : '-$';
+    elDiff.innerHTML = `<strong>${diffSign}${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>`;
+  }
+
+  if (elVar) {
+    const pct = sumProy > 0 ? ((diff / sumProy) * 100).toFixed(1) : 0;
+    if (diff >= 0) {
+      elVar.innerHTML = `<span class="badge-success">↓ ${pct}% Ahorro</span>`;
+    } else {
+      elVar.innerHTML = `<span class="badge-danger">↑ ${Math.abs(pct)}% Desvío</span>`;
+    }
+  }
+
+  if (elCnt) elCnt.textContent = `${servicios.length} mantenimientos`;
+}
+
+function filterDashboardTable() {
+  const query = (document.getElementById('dashboard-table-search')?.value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#dashboard-table-tbody tr');
+  rows.forEach(row => {
+    const text = row.getAttribute('data-search') || '';
+    if (!query || text.includes(query)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+function selectDashboardMonth(monthNum) {
+  state.dashboardFilters.month = monthNum;
+
+  // Actualizar botones de mes en la UI
+  document.querySelectorAll('.month-pill-btn').forEach(b => {
+    const m = b.getAttribute('data-month');
+    if (monthNum === null) {
+      if (b.classList.contains('all-months-btn')) b.classList.add('active');
+      else b.classList.remove('active');
+    } else {
+      if (parseInt(m) === monthNum) b.classList.add('active');
+      else b.classList.remove('active');
+    }
+  });
+
+  fetchDashboardData();
+}
+
+function populateDashboardSlicers(data) {
+  // 1. Selector de Sedes
+  const selectSede = document.getElementById('slicer-sede');
+  if (selectSede && selectSede.options.length <= 1) {
+    selectSede.innerHTML = `<option value="">Todas las Sedes</option>` +
+      data.available_sedes.map(s => `<option value="${s.id}">${s.icono || '🏢'} ${s.nombre}</option>`).join('');
+    if (state.dashboardFilters.sede_id) {
+      selectSede.value = state.dashboardFilters.sede_id;
+    }
+  }
+
+  // 2. Selector de Años
+  const selectYear = document.getElementById('slicer-year');
+  if (selectYear && data.available_years) {
+    const currentYearVal = selectYear.value;
+    selectYear.innerHTML = data.available_years.map(y => `<option value="${y}" ${y === state.dashboardFilters.year ? 'selected' : ''}>${y} ${y === 2026 ? '(Período Actual)' : ''}</option>`).join('');
+    if (currentYearVal) selectYear.value = currentYearVal;
+  }
+}
+
+function onDashboardFilterChange() {
+  const y = document.getElementById('slicer-year')?.value;
+  const s = document.getElementById('slicer-sede')?.value;
+  const t = document.getElementById('slicer-tipo')?.value;
+  const c = document.getElementById('slicer-categoria')?.value;
+
+  state.dashboardFilters.year = y ? parseInt(y) : 2026;
+  state.dashboardFilters.sede_id = s ? parseInt(s) : null;
+  state.dashboardFilters.tipo_trabajo = t || 'Todos';
+  state.dashboardFilters.categoria = c || 'Todas';
+
+  fetchDashboardData();
+}
+
+function resetDashboardFilters() {
+  state.dashboardFilters = {
+    year: 2026,
+    month: null,
+    sede_id: null,
+    tipo_trabajo: 'Todos',
+    categoria: 'Todas'
+  };
+
+  const selYear = document.getElementById('slicer-year');
+  if (selYear) selYear.value = '2026';
+  const selSede = document.getElementById('slicer-sede');
+  if (selSede) selSede.value = '';
+  const selTipo = document.getElementById('slicer-tipo');
+  if (selTipo) selTipo.value = 'Todos';
+  const selCat = document.getElementById('slicer-categoria');
+  if (selCat) selCat.value = 'Todas';
+
+  // Reactivar botón "Todo el año"
+  document.querySelectorAll('.month-pill-btn').forEach(b => {
+    if (b.classList.contains('all-months-btn')) b.classList.add('active');
+    else b.classList.remove('active');
+  });
+
+  const searchInp = document.getElementById('dashboard-table-search');
+  if (searchInp) searchInp.value = '';
+
+  fetchDashboardData();
+  showToast('Filtros restablecidos a vista anual general.', 'info');
+}
+
+// Diagnóstico Ejecutivo Inteligente con IA
+async function generateAIDiagnosis() {
+  openModal('modal-ai-diagnosis');
+  const loadingEl = document.getElementById('ai-diagnosis-loading');
+  const contentEl = document.getElementById('ai-diagnosis-content');
+  const subEl = document.getElementById('ai-diagnosis-subtitle');
+
+  if (loadingEl) loadingEl.style.display = 'block';
+  if (contentEl) contentEl.style.display = 'none';
+
+  const filterSummary = document.getElementById('filter-active-summary')?.textContent || 'Período Actual';
+  if (subEl) subEl.textContent = `Informe Ejecutivo SENIAT • ${filterSummary}`;
+
+  try {
+    const res = await fetch('/api/dashboard/ai-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.dashboardFilters)
+    });
+
+    const data = await res.json();
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (contentEl) {
+      contentEl.style.display = 'block';
+      const markdown = data.report_markdown || 'No se pudo generar el reporte.';
+      contentEl.innerHTML = marked.parse(markdown);
+    }
+  } catch (err) {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (contentEl) {
+      contentEl.style.display = 'block';
+      contentEl.innerHTML = `<div class="toast-danger" style="padding: 1rem; border-radius: 8px;">Error al generar diagnóstico: ${escapeHTML(err.message)}</div>`;
+    }
+  }
+}
+
+// Modal Global de Registro de Trabajo
+function openGlobalTrabajoModal() {
+  const selectPlanta = document.getElementById('global-trabajo-planta-select');
+  if (selectPlanta) {
+    selectPlanta.innerHTML = `
+      <option value="">-- Selecciona una planta --</option>
+      ${state.allPlantas.map(p => `
+        <option value="${p.id}">${escapeHTML(p.codigo)} - ${escapeHTML(p.nombre)} (${escapeHTML(p.sede_nombre || '')})</option>
+      `).join('')}
+    `;
+  }
+  const dateInp = document.getElementById('global-trabajo-fecha');
+  if (dateInp) {
+    dateInp.value = new Date().toISOString().split('T')[0];
+  }
+  openModal('modal-nuevo-trabajo-global');
+}
+
+function onGlobalTrabajoPlantaChanged() {
+  const sel = document.getElementById('global-trabajo-planta-select');
+  const horasInp = document.getElementById('global-trabajo-horas');
+  if (sel && horasInp) {
+    const pid = parseInt(sel.value);
+    const planta = state.allPlantas.find(x => x.id === pid);
+    if (planta && planta.horas_operacion) {
+      horasInp.value = planta.horas_operacion;
+    }
+  }
+}
+
+async function handleCreateTrabajoGlobal(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const plantaId = formData.get('planta_id');
+
+  if (!plantaId) {
+    showToast('Debes seleccionar una planta', 'danger');
+    return;
+  }
+
+  const btn = document.getElementById('btn-submit-trabajo-global');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+  }
+
+  try {
+    const res = await fetch(`/api/plantas/${plantaId}/trabajos`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) throw new Error('Error al registrar trabajo');
+
+    closeModal('modal-nuevo-trabajo-global');
+    form.reset();
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar y Actualizar Dashboard';
+    }
+
+    showToast('✅ Mantenimiento registrado y reflejado en el dashboard.', 'success');
+    fetchDashboardData();
+    fetchAllPlantas();
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar y Actualizar Dashboard';
+    }
+    showToast('Error: ' + err.message, 'danger');
+  }
+}
+
+function openChatWithContext(initialMessage, plantaId = null) {
+  const widget = document.getElementById('chat-widget');
+  if (widget && !widget.classList.contains('open')) {
+    widget.classList.add('open');
+  }
+  if (plantaId) {
+    setChatPlantContext(plantaId);
+  }
+  const input = document.getElementById('chat-user-input');
+  if (input && initialMessage) {
+    input.value = initialMessage;
+    input.focus();
   }
 }

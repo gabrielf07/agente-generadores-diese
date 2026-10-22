@@ -64,6 +64,83 @@ async def read_index():
 async def get_stats():
     return db_manager.get_system_stats()
 
+@app.get("/api/dashboard/analytics")
+async def get_dashboard_analytics_endpoint(
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    sede_id: Optional[int] = Query(None),
+    tipo_trabajo: Optional[str] = Query(None),
+    categoria: Optional[str] = Query(None)
+):
+    return db_manager.get_dashboard_analytics(
+        year=year,
+        month=month,
+        sede_id=sede_id,
+        tipo_trabajo=tipo_trabajo,
+        categoria=categoria
+    )
+
+class DashboardAIAnalysisRequest(BaseModel):
+    year: Optional[int] = None
+    month: Optional[int] = None
+    sede_id: Optional[int] = None
+    tipo_trabajo: Optional[str] = None
+    categoria: Optional[str] = None
+
+@app.post("/api/dashboard/ai-analysis")
+async def generate_dashboard_ai_analysis(payload: DashboardAIAnalysisRequest):
+    analytics = db_manager.get_dashboard_analytics(
+        year=payload.year,
+        month=payload.month,
+        sede_id=payload.sede_id,
+        tipo_trabajo=payload.tipo_trabajo,
+        categoria=payload.categoria
+    )
+    kpis = analytics["kpis"]
+    periodo_str = f"Mes: {payload.month} / Año: {analytics['filter_applied']['year']}" if payload.month else f"Año Completo {analytics['filter_applied']['year']}"
+
+    top_sedes = ", ".join([f"{s['nombre']} ({s['total_servicios']} servicios, {s['total_fallas']} fallas)" for s in analytics["sedes_ranking"][:3]])
+    top_fallas = ", ".join([f"{f['categoria']} ({f['cantidad']} casos - {f['porcentaje']}%)" for f in analytics["fallas_por_categoria"][:3]])
+
+    prompt = f"""
+Actúa como el Ingeniero Consultor Senior y Jefe de Mantenimiento de Plantas Eléctricas Diésel del SENIAT.
+Genera un INFORME EJECUTIVO TÉCNICO Y FINANCIERO conciso, directo y estructurado para la Gerencia de Infraestructura y Administración.
+
+DATOS DEL PERÍODO ({periodo_str}):
+• Cobertura: {kpis['total_sedes']} Sedes SENIAT analizadas, {kpis['total_plantas']} Grupos Electrógenos ({kpis['total_kva']} kVA total).
+• Disponibilidad Operativa: {kpis['disponibilidad_pct']}% ({kpis['plantas_operativas']} operativas, {kpis['plantas_alerta']} en alerta/mantenimiento).
+• Servicios Realizados: {kpis['total_servicios']} total ({kpis['total_preventivos']} Preventivos, {kpis['total_fallas']} Correctivos/Fallas).
+• Ejecución Presupuestaria:
+  - Presupuesto Proyectado: ${kpis['costo_proyectado']:,.2f}
+  - Gasto Real Ejecutado: ${kpis['costo_real']:,.2f}
+  - Balance/Ahorro: ${kpis['diferencia']:,.2f} ({kpis['variacion_pct']}% de variación favorable).
+• Sedes con mayor actividad y fallas: {top_sedes}.
+• Principales fallas y sistemas afectados: {top_fallas}.
+
+ESTRUCTURA DEL INFORME:
+1. 📌 **Diagnóstico General de la Flota**: Evaluación del % de disponibilidad y cumplimiento del plan.
+2. 🚨 **Puntos Críticos por Sede**: Dónde se concentran las fallas y por qué (salitre en aduanas, horas de uso en centro de datos, etc.).
+3. 💰 **Evaluación de Costos y Eficiencia**: Análisis del ahorro o variaciones detectadas.
+4. 🛠️ **Plan de Acción y Recomendaciones**: 3 recomendaciones técnicas prioritarias (repuestos a almacenar, medidas preventivas).
+Usa formato markdown limpio, profesional y directo.
+"""
+    try:
+        response_text = agent.ask_agent(query=prompt).get("response", "")
+        return {
+            "status": "success",
+            "periodo": periodo_str,
+            "kpis": kpis,
+            "report_markdown": response_text
+        }
+    except Exception as e:
+        return {
+            "status": "partial",
+            "periodo": periodo_str,
+            "kpis": kpis,
+            "report_markdown": f"### 📊 Informe Ejecutivo Local ({periodo_str})\n\n- **Disponibilidad de la Flota**: {kpis['disponibilidad_pct']}%\n- **Total Servicios**: {kpis['total_servicios']} ({kpis['total_preventivos']} Preventivos, {kpis['total_fallas']} Correctivos)\n- **Balance Presupuestario**: Gasto Real ${kpis['costo_real']:,.2f} vs Proyectado ${kpis['costo_proyectado']:,.2f} (Ahorro de ${kpis['diferencia']:,.2f})\n\n*Nota: El servicio de IA externa reporta alta demanda, datos consolidados directamente desde la base de datos operativa.*"
+        }
+
+
 # =========================================================================
 # API SEDES
 # =========================================================================
@@ -168,6 +245,10 @@ async def add_trabajo(
     descripcion: str = Form(...),
     repuestos_utilizados: Optional[str] = Form(""),
     observaciones: Optional[str] = Form(""),
+    costo_proyectado: float = Form(0.0),
+    costo_real: float = Form(0.0),
+    categoria_falla: Optional[str] = Form("Lubricación y Filtros"),
+    estado_servicio: Optional[str] = Form("Completado"),
     fotos: List[UploadFile] = File([])
 ):
     try:
@@ -192,6 +273,10 @@ async def add_trabajo(
             "descripcion": descripcion,
             "repuestos_utilizados": repuestos_utilizados,
             "observaciones": observaciones,
+            "costo_proyectado": costo_proyectado,
+            "costo_real": costo_real,
+            "categoria_falla": categoria_falla,
+            "estado_servicio": estado_servicio,
             "fotos": guardadas
         }
         trabajo_id = db_manager.create_trabajo(trabajo_data)
