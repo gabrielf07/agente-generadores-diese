@@ -91,9 +91,12 @@ async function loadInitialData() {
 }
 
 function handleHashRouting() {
-  const hash = window.location.hash || '#/dashboard';
+  let hash = window.location.hash || '#/dashboard';
+  if (hash.startsWith('#') && !hash.startsWith('#/')) {
+    hash = '#/' + hash.slice(1);
+  }
 
-  if (hash === '#/dashboard' || hash === '' || hash === '#/') {
+  if (hash === '#/dashboard' || hash === '' || hash === '#/' || hash === '#') {
     showView('dashboard');
     fetchDashboardData();
   } else if (hash === '#/sedes') {
